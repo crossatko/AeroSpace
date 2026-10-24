@@ -74,16 +74,6 @@ focus-follows-mouse.raise-apps = []
 # Values: 'alt', 'cmd', 'ctrl', 'ctrl-alt'. '' = off. Only the exact modifier set triggers.
 mouse-modifier = ''
 
-# Trackpad swipe between workspaces (the monitor under the cursor). Turn the macOS
-# gesture with the same finger count off in System Settings > Trackpad > More Gestures.
-[gestures]
-workspace-swipe = false
-workspace-swipe-fingers = 3        # 3 | 4
-workspace-swipe-threshold = 15     # percent of the trackpad width the fingers travel
-workspace-swipe-natural = true     # fingers right = previous workspace (like macOS Spaces)
-workspace-swipe-skip-empty = true  # skip empty workspaces
-workspace-swipe-wrap = false       # wrap around at the first/last workspace
-
 # Possible values: (qwerty|dvorak|colemak)
 # See https://nikitabobko.github.io/AeroSpace/guide#key-mapping
 key-mapping.preset = 'qwerty'
@@ -102,6 +92,16 @@ gaps.outer.left =       0
 gaps.outer.bottom =     0
 gaps.outer.top =        0
 gaps.outer.right =      0
+
+# Trackpad swipe between workspaces (the monitor under the cursor). Turn the macOS
+# gesture with the same finger count off in System Settings > Trackpad > More Gestures.
+[gestures]
+workspace-swipe = false
+workspace-swipe-fingers = 3        # 3 | 4
+workspace-swipe-threshold = 15     # percent of the trackpad width the fingers travel
+workspace-swipe-natural = true     # fingers right = previous workspace (like macOS Spaces)
+workspace-swipe-skip-empty = true  # skip empty workspaces
+workspace-swipe-wrap = false       # wrap around at the first/last workspace
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
