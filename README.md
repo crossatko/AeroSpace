@@ -77,6 +77,8 @@ focus-follows-mouse.debug-log = false   # decisions -> ~/Library/Logs/AeroSpace/
 menu-bar-clickable = true
 menu-bar-hide-stock-item = true  # false = keep the stock item as well
 menu-bar-scroll-switch = true    # scroll over it = previous/next non-empty workspace
+menu-bar-workspace-labels = 'binding'  # pills show the key bound to 'workspace N' instead of the name ('name' = default)
+menu-bar-debug-log = false       # click/scroll diagnostics -> ~/Library/Logs/AeroSpace/menubar.log
 menu-bar-max-width = 0           # points, 0 = auto
 ```
 
