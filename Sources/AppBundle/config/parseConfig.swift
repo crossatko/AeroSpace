@@ -151,6 +151,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "menu-bar-clickable": Parser(\.menuBarClickable, parseBool),
     "menu-bar-hide-stock-item": Parser(\.menuBarHideStockItem, parseBool),
     "menu-bar-debug-log": Parser(\.menuBarDebugLog, parseBool),
+    "menu-bar-workspace-labels": Parser(\.menuBarWorkspaceLabels, parseMenuBarWorkspaceLabels),
     "menu-bar-scroll-switch": Parser(\.menuBarScrollSwitch, parseBool),
     "menu-bar-max-width": Parser(\.menuBarMaxWidth) { raw, backtrace in
         parseInt(raw, backtrace).flatMap { n in
@@ -424,6 +425,12 @@ private func parseArrayOfStrings(_ raw: OrderedJson, _ backtrace: ConfigBacktrac
                 parseString(elem, backtrace + .index(index))
             }
         }
+}
+
+private func parseMenuBarWorkspaceLabels(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<MenuBarWorkspaceLabels> {
+    parseString(raw, backtrace).flatMap {
+        MenuBarWorkspaceLabels(rawValue: $0).toResult(.init(backtrace, "Can't parse menu-bar-workspace-labels '\($0)'. Use 'name' or 'binding'"))
+    }
 }
 
 private func parseDefaultContainerOrientation(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<DefaultContainerOrientation> {

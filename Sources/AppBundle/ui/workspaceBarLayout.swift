@@ -16,10 +16,15 @@ struct WorkspaceBarItem: Equatable {
     let hasFullscreenWindows: Bool
     /// Index of the monitor (left to right) the workspace belongs to
     let monitorIndex: Int
+    /// Text shown instead of the name (menu-bar-workspace-labels = 'binding'); the name stays the identity
+    let label: String?
+
+    var display: String { label ?? name }
 
     init(
         name: String, textWidth: CGFloat, shortTextWidth: CGFloat? = nil, isFocused: Bool = false, isVisible: Bool = false,
         isEmpty: Bool = false, hasFullscreenWindows: Bool = false, monitorIndex: Int = 0,
+        label: String? = nil,
     ) {
         self.name = name
         self.textWidth = textWidth
@@ -29,6 +34,7 @@ struct WorkspaceBarItem: Equatable {
         self.isEmpty = isEmpty
         self.hasFullscreenWindows = hasFullscreenWindows
         self.monitorIndex = monitorIndex
+        self.label = label
     }
 
     /// Only occupied, visible (shown on some monitor) and focused workspaces are shown
@@ -156,3 +162,24 @@ struct ScrollSwitchTracker {
 
 /// A click x in the status button's coordinate space -> x in the bar view's space (the view sits at barOriginX in the button).
 func barLocalX(pointInButtonX x: CGFloat, barOriginX: CGFloat) -> CGFloat { x - barOriginX }
+
+// MARK: pill labels from key bindings (menu-bar-workspace-labels = 'binding')
+
+/// A main-mode binding whose command is exactly `workspace <name>`: `notation` is the key notation as written in the config
+/// ('ctrl-alt-shift-a', 'a'), `workspace` is the target name
+struct WorkspaceBindingCandidate: Equatable {
+    let notation: String
+    let workspace: String
+}
+
+/// Workspace name -> the key that switches to it. If several bindings target a workspace, the one with the fewest modifiers
+/// wins, then the alphabetically first notation. Workspaces without a binding are absent (the caller falls back to the name).
+func workspaceLabelsFromBindings(_ candidates: [WorkspaceBindingCandidate]) -> [String: String] {
+    func parts(_ c: WorkspaceBindingCandidate) -> [Substring] { c.notation.split(separator: "-", omittingEmptySubsequences: false) }
+    var best: [String: WorkspaceBindingCandidate] = [:]
+    for c in candidates where !parts(c).last.orDie().isEmpty {
+        guard let cur = best[c.workspace] else { best[c.workspace] = c; continue }
+        if (parts(c).count, c.notation) < (parts(cur).count, cur.notation) { best[c.workspace] = c }
+    }
+    return best.mapValues { String(parts($0).last.orDie()) }
+}
