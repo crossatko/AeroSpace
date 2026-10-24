@@ -103,3 +103,14 @@ func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth
             return CGPoint(x: min(x, r.maxX - 1), y: r.maxY - sliver)
     }
 }
+
+/// Where a window is remembered (as proportions of its monitor) before it is parked, to restore it on unhide.
+/// A window that is already off every monitor (parked by a previous run of the app, which keeps no state) must not
+/// be remembered at its parked position, or it would be restored to the screen edge. Such a window gets a default spot.
+func unhiddenProportion(windowRect: Rect, monitorRect: Rect, allMonitorRects: [Rect]) -> CGPoint {
+    if allMonitorRects.contains(where: { $0.contains(windowRect.center) }) {
+        let p = windowRect.topLeftCorner - monitorRect.topLeftCorner
+        return CGPoint(x: p.x / monitorRect.width, y: p.y / monitorRect.height)
+    }
+    return CGPoint(x: 0.15, y: 0.15)
+}

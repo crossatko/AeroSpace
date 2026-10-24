@@ -148,3 +148,19 @@ import Testing
         #expect(!parseConfig("hidden-window-placement = 'nope'").errors.isEmpty)
     }
 }
+
+@Suite struct UnhiddenProportionTests {
+    let monitors = [Rect(topLeftX: 0, topLeftY: 0, width: 1000, height: 800), Rect(topLeftX: 0, topLeftY: -900, width: 1600, height: 900)]
+
+    @Test func windowOnAMonitorKeepsItsProportion() {
+        let p = unhiddenProportion(windowRect: Rect(topLeftX: 250, topLeftY: 200, width: 300, height: 200), monitorRect: monitors[0], allMonitorRects: monitors)
+        #expect(p == CGPoint(x: 0.25, y: 0.25))
+    }
+
+    @Test func windowParkedOffEveryMonitorGetsDefaultSpot() {
+        // Parked beyond the right edge of the display above (previous app run kept no state)
+        let parked = Rect(topLeftX: 1599, topLeftY: -500, width: 700, height: 600)
+        let p = unhiddenProportion(windowRect: parked, monitorRect: monitors[1], allMonitorRects: monitors)
+        #expect(p.x >= 0 && p.x <= 0.5 && p.y >= 0 && p.y <= 0.5)
+    }
+}
