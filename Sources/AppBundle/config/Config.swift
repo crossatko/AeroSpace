@@ -49,6 +49,7 @@ struct Config: ConvenienceMutable {
     var menuBarScrollSwitch: Bool = false
     /// In points, 0 = auto
     var menuBarMaxWidth: Int = 0
+    var hiddenWindowPlacement: HiddenWindowPlacement = .corner
     var enableNormalizationOppositeOrientationForNestedContainers: Bool = true
     var dwindle: Bool = false
     var persistentWorkspaces: OrderedSet<String> = []

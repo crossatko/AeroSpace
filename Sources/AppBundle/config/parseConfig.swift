@@ -155,6 +155,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
             n >= 0 ? .success(n) : .failure(.init(backtrace, "Expected a non-negative number of points (0 = auto), got \(n)"))
         }
     },
+    "hidden-window-placement": Parser(\.hiddenWindowPlacement, parseHiddenWindowPlacement),
     persistentWorkspacesKey: Parser(\.persistentWorkspaces, parsePersistentWorkspaces),
     "exec-on-workspace-change": Parser(\.execOnWorkspaceChange, parseArrayOfStrings),
     "exec": Parser(\.execConfig, parseExecConfig),
@@ -435,6 +436,10 @@ private func parseMouseModifierConfig(_ raw: OrderedJson, _ backtrace: ConfigBac
             ? .success($0)
             : .failure(.init(backtrace, "Can't parse mouse modifier '\($0)'. Use '' or alt, cmd, ctrl, shift, combined with '-' (e.g. 'ctrl-alt')"))
     }
+}
+
+private func parseHiddenWindowPlacement(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<HiddenWindowPlacement> {
+    parseString(raw, backtrace).flatMap { parseEnum($0, HiddenWindowPlacement.self).toParsedConfig(backtrace) }
 }
 
 extension ResOrStr where Failure == String {
