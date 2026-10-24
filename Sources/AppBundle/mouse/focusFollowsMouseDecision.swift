@@ -227,11 +227,14 @@ func ffmAxRoleIsTransient(_ role: String?) -> Bool {
 }
 
 /// True if the AX element under the cursor means "do not switch focus" (a menu/popup is open under the cursor).
-/// Elements without an AXWindow used to veto unconditionally; remote-view content (System Settings panes are hosted by
-/// extension processes) may lack one, so such an element only vetoes if it is transient or lies outside the target.
-func ffmAxElementVeto(_ e: FfmAxElementInfo, targetFrame: CGRect?, tolerance: CGFloat = 4) -> Bool {
+/// Elements without an AXWindow used to veto unconditionally. Remote-view content (System Settings panes are hosted by
+/// extension processes) has none, and its scroll group can be taller than the window, so the element frame is not
+/// required to lie inside the target. Instead: the cursor must lie inside the target frame (the hit-test chose the
+/// target by frame) and the element must intersect it. Any owner pid is accepted: hosted content belongs to another
+/// process by design, and genuine menus/popovers/sheets are caught by their roles.
+func ffmAxElementVeto(_ e: FfmAxElementInfo, cursor: CGPoint, targetFrame: CGRect?, tolerance: CGFloat = 4) -> Bool {
     if ffmAxRoleIsTransient(e.role) { return true }
     if e.hasWindow || e.role == "AXWindow" { return false }
-    if let f = e.frame, let t = targetFrame, t.insetBy(dx: -tolerance, dy: -tolerance).contains(f) { return false }
-    return true
+    guard let t = targetFrame?.insetBy(dx: -tolerance, dy: -tolerance), let f = e.frame, t.contains(cursor), t.intersects(f) else { return true }
+    return false
 }

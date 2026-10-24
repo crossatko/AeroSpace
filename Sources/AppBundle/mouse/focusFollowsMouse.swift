@@ -9,6 +9,7 @@ import Common
 @MainActor private var focusFollowsTask: Task<(), any Error>? = nil
 @MainActor private var focusFollowsTimer: Task<(), any Error>? = nil
 @MainActor private var ffmDebugLogEnabled = false
+@MainActor private var lastLoggedDrop: (reason: String, target: UInt32?)? = nil
 @MainActor private var lastHitRect: CGRect? = nil
 @MainActor private var lastLoggedHit: FfmHit? = nil
 @MainActor private var ffmState = FfmState()
@@ -70,8 +71,8 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
                     // Menus/popups are vetoed via AX, but only when we are about to act (AX is slow)
                     if ffmState.wouldAct(hit, focusedId: focusedId, nowMs: now) {
                         // Ignores macOS menubar dropdown, but not non-native menu-like fake windows
-                        if let ax = await axElementUnderMouse(location), ffmAxElementVeto(ax, targetFrame: lastHitRect) {
-                            if ffmDebugLogEnabled {
+                        if let ax = await axElementUnderMouse(location), ffmAxElementVeto(ax, cursor: location, targetFrame: lastHitRect) {
+                            if ffmDebugLogEnabled, ffmShouldLogDrop("ax-popup", hit.windowId) {
                                 ffmLog("DROP reason=ax-popup cursor=\(ffmPt(location)) target=\(hit.windowId.map(String.init) ?? "none") role=\(ax.role ?? "?") subrole=\(ax.subrole ?? "?") pid=\(ax.pid) owner=\(ffmOwnerName(pid: ax.pid)) hasWindow=\(ax.hasWindow) frame=\(ax.frame.map(ffmRect) ?? "?") targetFrame=\(lastHitRect.map(ffmRect) ?? "?")")
                             }
                             return
@@ -81,7 +82,7 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
                         try checkCancellation()
                     }
                     let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId, vetoed: vetoed), nowMs: now)
-                    if ffmDebugLogEnabled, let reason = ffmState.lastDropReason, hit.windowId != nil {
+                    if ffmDebugLogEnabled, let reason = ffmState.lastDropReason, hit.windowId != nil, ffmShouldLogDrop(reason, hit.windowId) {
                         ffmLog("DROP reason=\(reason) cursor=\(ffmPt(location)) target=\(hit.windowId.map(String.init) ?? "none") focused=\(focusedId.map(String.init) ?? "none")")
                     }
                     if ffmDebugLogEnabled { ffmLogDecision(location, hit, focusedId, decision, vetoed) }
@@ -326,4 +327,11 @@ private let ffmLogMaxBytes = 1_000_000
     } else {
         try? data.write(to: url)
     }
+}
+
+/// DROP lines only when (reason, target) differs from the previous logged drop
+@MainActor private func ffmShouldLogDrop(_ reason: String, _ target: UInt32?) -> Bool {
+    if let l = lastLoggedDrop, l.reason == reason, l.target == target { return false }
+    lastLoggedDrop = (reason, target)
+    return true
 }
