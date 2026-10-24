@@ -380,7 +380,11 @@ By default, AeroSpace does two types of tree normalizations:
 The root container is an exception, it is allowed to have a single window child.
 Configured by `enable-normalization-flatten-containers`
 . Containers that nest into each other must have opposite orientations.
-Configured by `enable-normalization-opposite-orientation-for-nested-containers`
+Configured by `enable-normalization-opposite-orientation-for-nested-containers`.
+This normalization is skipped while `dwindle = true`
+
+Dwindle: when `dwindle = true` (default `false`), a new tiling window splits the most recent window along its longer side
+(Hyprland-style), producing a binary tree. Use `layout horizontal vertical` to toggle the orientation of a split.
 
 [.lead]
 *Example 1*

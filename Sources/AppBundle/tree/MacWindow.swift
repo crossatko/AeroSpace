@@ -220,11 +220,32 @@ private func unbindAndGetBindingDataForNewWindow(_ windowId: UInt32, _ macApp: M
     }
 }
 
+/// Orientation for splitting a window of the given rect: along its longer side (square -> horizontal).
+/// Without a rect (window not laid out yet) the fallback is used.
+func dwindleSplit(_ rect: Rect?, fallback: Orientation) -> Orientation {
+    guard let rect else { return fallback }
+    return rect.width >= rect.height ? .h : .v
+}
+
 // The function is private because it's unsafe. It leaves the window in unbound state
 @MainActor
 private func unbindAndGetBindingDataForNewTilingWindow(_ workspace: Workspace, window: Window?) -> BindingData {
     window?.unbindFromParent() // It's important to unbind to get correct data from below
     let mruWindow = workspace.mostRecentWindowRecursive
+    if config.dwindle, let mruWindow, let tilingParent = mruWindow.parent as? TilingContainer, tilingParent.layout == .tiles {
+        // Dwindle: the new window splits the most recent window along its longer side.
+        // Insertion logic ported from Skyland (MIT)
+        let fallback = tilingParent.children.count == 1 ? tilingParent.orientation : tilingParent.orientation.opposite
+        let orientation = dwindleSplit(mruWindow.lastAppliedLayoutPhysicalRect, fallback: fallback)
+        if tilingParent.children.count == 1 {
+            tilingParent.changeOrientation(orientation)
+            return BindingData(parent: tilingParent, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+        }
+        let data = mruWindow.unbindFromParent()
+        let split = TilingContainer(parent: tilingParent, adaptiveWeight: data.adaptiveWeight, orientation, .tiles, index: data.index)
+        mruWindow.bind(to: split, adaptiveWeight: WEIGHT_AUTO, index: 0)
+        return BindingData(parent: split, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+    }
     if let mruWindow, let tilingParent = mruWindow.parent as? TilingContainer {
         return BindingData(
             parent: tilingParent,
