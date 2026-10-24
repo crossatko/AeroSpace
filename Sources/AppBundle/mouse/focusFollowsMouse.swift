@@ -109,16 +109,11 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
     let bundleId = window.app.rawAppBundleId ?? ""
     var useRaise = mode == .raise
     if mode == .noRaise {
-        // Floating windows overlap each other and tiling ones, and no-raise breaks the "MRU order == stacking order"
-        // assumption the floating hit-test relies on, so they always raise. Tiling windows never overlap.
-        if case .floating = hit { useRaise = true }
-        if raiseApps.contains(bundleId) || noRaiseFailedApps.contains(bundleId) { useRaise = true }
-        if !isNoRaiseFocusAvailable {
-            if !noRaiseUnavailableLogged {
-                noRaiseUnavailableLogged = true
-                eprint("focus-follows-mouse: SkyLight symbols for no-raise are missing on this macOS, falling back to raise")
-            }
-            useRaise = true
+        // Floating windows raise, tiling ones never do (see ffmShouldRaise)
+        useRaise = ffmShouldRaise(hit: hit, inRaiseApps: raiseApps.contains(bundleId))
+        if !isNoRaiseFocusAvailable, !noRaiseUnavailableLogged {
+            noRaiseUnavailableLogged = true
+            eprint("focus-follows-mouse: SkyLight symbols for no-raise are missing on this macOS, tiled windows get AeroSpace focus only")
         }
     }
     try? await runLightSession(.focusFollowsMouse, token) {
@@ -127,14 +122,15 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
             window.nativeFocus()
         }
     }
-    if useRaise { return }
+    if useRaise || !isNoRaiseFocusAvailable { return }
     guard let macWindow = window as? MacWindow else { return }
     let pid = macWindow.macApp.nsApp.processIdentifier
     let ok = await noRaiseFocusAndVerify(pid: pid, windowId: id)
     if !ok {
-        eprint("focus-follows-mouse: no-raise focus did not take effect for '\(bundleId)', using raise for this app from now on")
-        noRaiseFailedApps.insert(bundleId)
-        window.nativeFocus()
+        // Never raise a tiled window as a fallback
+        if noRaiseFailedApps.insert(bundleId).inserted {
+            eprint("focus-follows-mouse: no-raise focus did not verify for '\(bundleId)', leaving the window unraised")
+        }
     }
 }
 

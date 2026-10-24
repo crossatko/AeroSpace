@@ -80,7 +80,8 @@ func runLightSession<T>(
         updateTrayText()
         SecureInputPanel.shared.refresh()
         if !event.isFocusFollowsMouse { try await layoutWorkspaces() }
-        if focusBefore != focusAfter {
+        // focus-follows-mouse does its own native focus (no-raise or raise); nativeFocus() here would AXRaise
+        if focusBefore != focusAfter && !event.isFocusFollowsMouse {
             focusAfter?.nativeFocus() // syncFocusToMacOs
         }
         if !event.isFocusFollowsMouse { scheduleCancellableCompleteRefreshSession(event) }
