@@ -78,6 +78,8 @@ focus-follows-mouse.mode = 'off'
 focus-follows-mouse.delay-ms = 0
 # Bundle ids that always use 'raise' (e.g. apps that ignore no-raise focus)
 focus-follows-mouse.raise-apps = []
+# Diagnostics: append one line per focus decision to ~/Library/Logs/AeroSpace/ffm.log
+focus-follows-mouse.debug-log = false
 
 # Hold the modifier: left-drag anywhere on a window moves it, right-drag resizes it.
 # Values: 'alt', 'cmd', 'ctrl', 'ctrl-alt'. '' = off. Only the exact modifier set triggers.

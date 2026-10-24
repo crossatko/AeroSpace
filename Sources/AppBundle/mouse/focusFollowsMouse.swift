@@ -8,6 +8,7 @@ import Common
 @MainActor private var focusFollowsMouseConfig: (FocusFollowsMouseMode, Int, [String])? = nil
 @MainActor private var focusFollowsTask: Task<(), any Error>? = nil
 @MainActor private var focusFollowsTimer: Task<(), any Error>? = nil
+@MainActor private var ffmDebugLogEnabled = false
 @MainActor private var ffmState = FfmState()
 /// Apps for which no-raise did not verify: they use raise from now on (until AeroSpace restarts)
 @MainActor private var noRaiseFailedApps: Set<String> = []
@@ -21,6 +22,7 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
 
 @MainActor func syncFocusFollowsMouse(_ config: Config) {
     let ffm = config.focusFollowsMouse
+    ffmDebugLogEnabled = ffm.debugLog
     let wanted: (FocusFollowsMouseMode, Int, [String])? = ffm.effectiveMode == .off ? nil : (ffm.effectiveMode, ffm.delayMs, ffm.raiseApps)
     if wanted?.0 == focusFollowsMouseConfig?.0 && wanted?.1 == focusFollowsMouseConfig?.1 && wanted?.2 == focusFollowsMouseConfig?.2 {
         return
@@ -72,6 +74,7 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
                         try checkCancellation()
                     }
                     let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId, vetoed: vetoed), nowMs: now)
+                    if ffmDebugLogEnabled { ffmLogDecision(location, hit, focusedId, decision, vetoed) }
                     applyDecision(decision, token: token)
                 }
         }
@@ -131,6 +134,7 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
         if noRaiseFailedApps.insert(bundleId).inserted {
             eprint("focus-follows-mouse: no-raise focus did not verify for '\(bundleId)', leaving the window unraised")
         }
+        if ffmDebugLogEnabled { ffmLog("NORAISE-VERIFY-FAILED window=\(id) \(ffmDescribe(id)) bundle=\(bundleId)") }
     }
 }
 
@@ -177,24 +181,30 @@ private nonisolated func isAxWindowUnderMouse(_ location: CGPoint) async -> Bool
 ///  2. The window server's topmost relevant window at the cursor is not the target (overlay, panel, Mission Control).
 @MainActor private func ffmVetoed(_ location: CGPoint, _ hit: FfmHit, _ nowMs: Int) async -> Bool {
     guard let targetId = hit.windowId, let target = Window.get(byId: targetId) as? MacWindow else { return false }
-    if let v = lastVeto, v.id == targetId, nowMs - v.ms < 100 { return true }
+    if let v = lastVeto, v.id == targetId, nowMs - v.ms < 100 {
+        if ffmDebugLogEnabled { ffmLog("VETO(cached) cursor=\(ffmPt(location)) target=\(targetId) \(ffmDescribe(targetId))") }
+        return true
+    }
     let targetPid = target.macApp.nsApp.processIdentifier
     let probe = await ffmProbe(location)
     let vetoed = ffmUnmanagedFrontVeto(focusedWindowId: probe.focusedWindowId) { Window.get(byId: $0) != nil }
         || ffmTopmostVeto(location, targetId: targetId, targetPid: targetPid, windowsFrontToBack: probe.windows, ownPid: ProcessInfo.processInfo.processIdentifier)
     lastVeto = vetoed ? (targetId, nowMs) : nil
+    if vetoed && ffmDebugLogEnabled { ffmLogVeto(location, targetId, targetPid, probe) }
     return vetoed
 }
 
 private struct FfmProbe: Sendable {
     let focusedWindowId: UInt32?
     let windows: [FfmWindowInfo]
+    var focusedPid: Int32? = nil
 }
 
 @concurrent
 private nonisolated func ffmProbe(_ location: CGPoint) async -> FfmProbe {
     // Focused window of the system-wide focused app (also right for non-activating panels such as Raycast)
     var focusedId: UInt32? = nil
+    var focusedPid: Int32? = nil
     let systemwide = AXUIElementCreateSystemWide()
     var app: CFTypeRef?
     if unsafe AXUIElementCopyAttributeValue(systemwide, kAXFocusedApplicationAttribute as CFString, &app) == .success,
@@ -203,6 +213,7 @@ private nonisolated func ffmProbe(_ location: CGPoint) async -> FfmProbe {
         var pid: pid_t = 0
         if unsafe AXUIElementGetPid(app as! AXUIElement, &pid) == .success {
             focusedId = axFocusedWindowId(pid: pid)
+            focusedPid = pid
         }
     }
     var windows: [FfmWindowInfo] = []
@@ -220,5 +231,70 @@ private nonisolated func ffmProbe(_ location: CGPoint) async -> FfmProbe {
             bounds: rect,
         ))
     }
-    return FfmProbe(focusedWindowId: focusedId, windows: windows)
+    return FfmProbe(focusedWindowId: focusedId, windows: windows, focusedPid: focusedPid)
+}
+
+
+// MARK: debug log (focus-follows-mouse.debug-log = true): one line per decision, never per mouse move
+
+@MainActor private func ffmDescribe(_ id: UInt32) -> String {
+    guard let w = Window.get(byId: id) else { return "app=? unmanaged" }
+    let kind = w.isFloating ? "floating" : "tiled"
+    return "app=\((w as? MacWindow)?.macApp.nsApp.localizedName ?? "?") \(kind)"
+}
+
+private func ffmPt(_ p: CGPoint) -> String { "\(Int(p.x)),\(Int(p.y))" }
+
+@MainActor private func ffmLogDecision(_ location: CGPoint, _ hit: FfmHit, _ focusedId: UInt32?, _ decision: FfmDecision, _ vetoed: Bool) {
+    let what: String
+    switch decision {
+        case .focus: what = "FOCUS"
+        case .scheduleFocus(_, let ms): what = "SCHEDULE(\(ms)ms)"
+        case .none, .cancelPending:
+            guard vetoed else { return } // quiet unless a veto was the reason
+            what = "VETOED-DECISION"
+    }
+    let target = hit.windowId.map { "\($0) \(ffmDescribe($0))" } ?? "none"
+    let focused = focusedId.map { "\($0) \(ffmDescribe($0))" } ?? "none"
+    ffmLog("\(what) cursor=\(ffmPt(location)) target=\(target) focused=\(focused)")
+}
+
+@MainActor private func ffmLogVeto(_ location: CGPoint, _ targetId: UInt32, _ targetPid: Int32, _ probe: FfmProbe) {
+    let head = "VETO cursor=\(ffmPt(location)) target=\(targetId) \(ffmDescribe(targetId)) targetPid=\(targetPid)"
+    if ffmUnmanagedFrontVeto(focusedWindowId: probe.focusedWindowId, isManaged: { Window.get(byId: $0) != nil }), let f = probe.focusedWindowId {
+        ffmLog("\(head) guard=unmanaged-front focused=\(f) owner=\(ffmOwnerName(pid: probe.focusedPid ?? 0))")
+        return
+    }
+    let own = ProcessInfo.processInfo.processIdentifier
+    for w in probe.windows where ffmLayerCounts(w.layer) && w.alpha > 0.01 && w.pid != own {
+        if w.id == targetId || (w.pid == targetPid && w.layer == 0) { break }
+        let b = w.bounds
+        ffmLog("\(head) guard=topmost cover=\(w.id) pid=\(w.pid) owner=\(ffmOwnerName(pid: w.pid)) layer=\(w.layer) alpha=\(w.alpha) bounds=\(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))x\(Int(b.height)) managed=\(Window.get(byId: w.id) != nil)")
+        return
+    }
+    ffmLog("\(head) guard=unknown")
+}
+
+private func ffmOwnerName(pid: Int32) -> String {
+    NSRunningApplication(processIdentifier: pid)?.localizedName ?? "?"
+}
+
+private let ffmLogMaxBytes = 1_000_000
+
+@MainActor private func ffmLog(_ message: String) {
+    let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/AeroSpace")
+    let url = dir.appendingPathComponent("ffm.log")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int, size > ffmLogMaxBytes {
+        try? FileManager.default.removeItem(at: url) // cap: start over
+    }
+    let line = "\(Date().formatted(.iso8601.dateSeparator(.dash).timeSeparator(.colon).timeZone(separator: .omitted))) \(message)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    if let h = try? FileHandle(forWritingTo: url) {
+        defer { try? h.close() }
+        _ = try? h.seekToEnd()
+        try? h.write(contentsOf: data)
+    } else {
+        try? data.write(to: url)
+    }
 }
