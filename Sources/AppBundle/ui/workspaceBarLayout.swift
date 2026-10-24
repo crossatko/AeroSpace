@@ -153,3 +153,6 @@ struct ScrollSwitchTracker {
         return direction
     }
 }
+
+/// A click x in the status button's coordinate space -> x in the bar view's space (the view sits at barOriginX in the button).
+func barLocalX(pointInButtonX x: CGFloat, barOriginX: CGFloat) -> CGFloat { x - barOriginX }
