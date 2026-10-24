@@ -174,7 +174,6 @@ import Testing
 
     @Test func effectiveSliverRules() {
         #expect(effectiveSliver(1, isZoom: false) == 1)
-        #expect(effectiveSliver(0.5, isZoom: false) == 0.5)
         #expect(effectiveSliver(2, isZoom: true) == 0)
     }
 
@@ -184,11 +183,8 @@ import Testing
         let bottom = HiddenSlot(edge: .bottom, isLowerSide: true, band: 0, bandCount: 1)
         func t(_ s: HiddenSlot, _ sl: CGFloat) -> CGPoint { hiddenTarget(slot: s, geometry: geometry, windowWidth: 400, relative: .zero, isZoom: false, sliver: sl) }
         #expect(t(right, 1).x == 999)
-        #expect(t(right, 0.5).x == 999.5)
         #expect(t(right, 0).x == 1000)
-        #expect(t(left, 0.5).x == -399.5)
         #expect(t(left, 0).x == -400)
-        #expect(t(bottom, 0.5).y == 799.5)
         #expect(t(bottom, 0).y == 800)
     }
 
@@ -196,9 +192,48 @@ import Testing
         #expect(parseConfig("").config.hiddenWindowSliver == 1)
         #expect(parseConfig("hidden-window-sliver = 0").config.hiddenWindowSliver == 0)
         #expect(parseConfig("hidden-window-sliver = 2").config.hiddenWindowSliver == 2)
-        #expect(parseConfig("hidden-window-sliver = '0.5'").config.hiddenWindowSliver == 0.5)
-        #expect(!parseConfig("hidden-window-sliver = '-1'").errors.isEmpty)
+        #expect(!parseConfig("hidden-window-sliver = '0.5'").errors.isEmpty)
+        #expect(!parseConfig("hidden-window-sliver = -1").errors.isEmpty)
+        #expect(!parseConfig("hidden-window-sliver = 21").errors.isEmpty)
         #expect(!parseConfig("hidden-window-sliver = 'abc'").errors.isEmpty)
         #expect(!parseConfig("hidden-window-sliver = true").errors.isEmpty)
+    }
+}
+
+@Suite struct DirectionalCornerTests {
+    let geometry = HiddenMonitorGeometry(
+        monitorRect: Rect(topLeftX: 0, topLeftY: 0, width: 1000, height: 800),
+        visibleRect: Rect(topLeftX: 0, topLeftY: 30, width: 1000, height: 770),
+        others: [],
+    )
+
+    @Test func sideEdgesParkAtTheBottomCorner() {
+        let left = HiddenSlot(edge: .left, isLowerSide: true, band: 2, bandCount: 3)
+        let right = HiddenSlot(edge: .right, isLowerSide: false, band: 1, bandCount: 2)
+        for rel in [CGPoint.zero, CGPoint(x: 0.5, y: 0.5), CGPoint(x: 1, y: 1)] {
+            // Lower workspaces: top-right corner of the window on the bottom-left screen corner
+            let l = hiddenTarget(slot: left, geometry: geometry, windowWidth: 400, relative: rel, isZoom: false, sliver: 1, cornerOnly: true)
+            #expect(l == CGPoint(x: -399, y: 799))
+            // Higher workspaces: top-left corner of the window on the bottom-right screen corner
+            let r = hiddenTarget(slot: right, geometry: geometry, windowWidth: 400, relative: rel, isZoom: false, sliver: 1, cornerOnly: true)
+            #expect(r == CGPoint(x: 999, y: 799))
+        }
+    }
+
+    @Test func zoomAndSliverZero() {
+        let left = HiddenSlot(edge: .left, isLowerSide: true, band: 0, bandCount: 1)
+        #expect(hiddenTarget(slot: left, geometry: geometry, windowWidth: 400, relative: .zero, isZoom: true, cornerOnly: true) == CGPoint(x: -400, y: 800))
+        #expect(hiddenTarget(slot: left, geometry: geometry, windowWidth: 400, relative: .zero, isZoom: false, sliver: 2, cornerOnly: true) == CGPoint(x: -398, y: 798))
+    }
+
+    @Test func bottomFallbackIsUnchanged() {
+        let bottom = HiddenSlot(edge: .bottom, isLowerSide: true, band: 0, bandCount: 1)
+        let a = hiddenTarget(slot: bottom, geometry: geometry, windowWidth: 400, relative: CGPoint(x: 0.5, y: 0), isZoom: false, cornerOnly: false)
+        let b = hiddenTarget(slot: bottom, geometry: geometry, windowWidth: 400, relative: CGPoint(x: 0.5, y: 0), isZoom: false, cornerOnly: true)
+        #expect(a == b)
+    }
+
+    @MainActor @Test func configValue() {
+        #expect(parseConfig("hidden-window-placement = 'directional-corner'").config.hiddenWindowPlacement == .directionalCorner)
     }
 }

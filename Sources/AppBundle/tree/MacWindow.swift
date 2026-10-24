@@ -4,7 +4,7 @@ import Common
 final class MacWindow: Window {
     let macApp: MacApp
     private var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
-    // `hidden-window-placement = 'directional'`: last parked position and width, to skip redundant AX calls
+    // `hidden-window-placement = 'directional'|'directional-corner'`: last parked position and width, to skip redundant AX calls
     private var lastHiddenTarget: CGPoint?
     private var lastHiddenWidth: CGFloat?
 
@@ -173,6 +173,7 @@ final class MacWindow: Window {
             relative: prevUnhiddenProportionalPositionInsideWorkspaceRect ?? .zero,
             isZoom: macApp.appId == .zoom,
             sliver: config.hiddenWindowSliver,
+            cornerOnly: config.hiddenWindowPlacement == .directionalCorner,
         )
         if lastHiddenTarget == target { return }
         lastHiddenTarget = target

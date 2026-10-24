@@ -194,7 +194,7 @@ private func layoutWorkspaces() async throws {
         try await workspace.layoutWorkspace()
     }
     var monitorToHiddenLayout: [CGPoint: (geometry: HiddenMonitorGeometry, slots: [String: HiddenSlot])] = [:]
-    if config.hiddenWindowPlacement == .directional {
+    if config.hiddenWindowPlacement != .corner {
         let allWorkspaces = Workspace.all // In AeroSpace's workspace order
         for monitor in monitors {
             let others = monitors.filter { $0.rect.topLeftCorner != monitor.rect.topLeftCorner }.map(\.rect)
