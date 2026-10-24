@@ -8,6 +8,9 @@ enum HiddenWindowPlacement: String, CaseIterable {
     /// Hidden windows go beyond the left edge (lower workspaces) or the right edge (higher workspaces), see `missionControlMirrorsParkedPositions`
     /// of the monitor, so Mission Control arranges workspaces spatially
     case directional
+    /// Like `directional`, but side-edge windows are also parked at the bottom, so only a corner pixel stays visible:
+    /// lower workspaces at the bottom-left corner, higher ones at the bottom-right. Workspaces of one side overlap there
+    case directionalCorner = "directional-corner"
 }
 
 /// With 'Group windows by application' ON, Mission Control follows the parked sides directly (lower workspaces left).
@@ -86,7 +89,8 @@ func effectiveSliver(_ configured: CGFloat, isZoom: Bool) -> CGFloat { isZoom ? 
 ///     Keeps the relative layout of the windows of a workspace
 ///   - windowWidth: only used for the left edge
 ///   - sliver: visible part in points, see `effectiveSliver`
-func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth: CGFloat, relative: CGPoint, isZoom: Bool, sliver configuredSliver: CGFloat = 1) -> CGPoint {
+///   - cornerOnly: left/right edge windows go to the bottom as well (only the corner pixel stays visible)
+func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth: CGFloat, relative: CGPoint, isZoom: Bool, sliver configuredSliver: CGFloat = 1, cornerOnly: Bool = false) -> CGPoint {
     let sliver = effectiveSliver(configuredSliver, isZoom: isZoom)
     let r = geometry.visibleRect
     let n = CGFloat(max(1, slot.bandCount))
@@ -94,9 +98,9 @@ func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth
     switch slot.edge {
         case .left, .right:
             // Bands are stacked vertically, the nearest workspace on top
-            let y = r.minY + r.height * (CGFloat(slot.band) + unit(relative.y)) / n
+            let y = cornerOnly ? r.maxY - sliver : r.minY + r.height * (CGFloat(slot.band) + unit(relative.y)) / n
             let x = slot.edge == .left ? r.minX + sliver - windowWidth : r.maxX - sliver
-            return CGPoint(x: x, y: min(y, r.maxY - 1))
+            return CGPoint(x: x, y: cornerOnly ? y : min(y, r.maxY - 1))
         case .bottom:
             // Lower workspaces in the left half, higher in the right half (swapped when mirroring); the nearest one is next to the middle
             let half = r.width / 2
@@ -117,12 +121,4 @@ func unhiddenProportion(windowRect: Rect, monitorRect: Rect, allMonitorRects: [R
         return CGPoint(x: p.x / monitorRect.width, y: p.y / monitorRect.height)
     }
     return CGPoint(x: 0.15, y: 0.15)
-}
-
-/// `hidden-window-sliver`: an integer (points) or a string such as '0.5', because TOML numbers here have no floats
-func parseHiddenWindowSliverValue(int: Int?, string: String?) -> CGFloat? {
-    let value: Double?
-    if let int { value = Double(int) } else if let string { value = Double(string.trimmingCharacters(in: .whitespaces)) } else { value = nil }
-    guard let value, value.isFinite, value >= 0, value <= 20 else { return nil }
-    return CGFloat(value)
 }

@@ -440,8 +440,9 @@ private func parseMouseModifierConfig(_ raw: OrderedJson, _ backtrace: ConfigBac
 }
 
 private func parseHiddenWindowSliver(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<CGFloat> {
-    parseHiddenWindowSliverValue(int: raw.asIntOrNil, string: raw.asStringOrNil)
-        .toResult(.init(backtrace, "Expected a number of points between 0 and 20, as an integer or a string like '0.5'"))
+    // Integers only: macOS pulls fractional window positions back by about 40 points
+    raw.asIntOrNil.flatMap { (0 ... 20).contains($0) ? CGFloat($0) : nil }
+        .toResult(.init(backtrace, "Expected an integer number of points between 0 and 20 (fractions don't work: macOS pulls fractional window positions back by about 40 points)"))
 }
 
 private func parseHiddenWindowPlacement(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<HiddenWindowPlacement> {
