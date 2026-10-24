@@ -63,6 +63,8 @@ struct FfmState {
 
     private(set) var lastTarget: UInt32? = nil
     private(set) var pending: FfmHit? = nil
+    /// Why the last mouseMoved did nothing (diagnostics only)
+    private(set) var lastDropReason: String? = nil
     private var buttonDown = false
     private var lastMouseUpMs: Int? = nil
     private var lastPoint: CGPoint? = nil
@@ -118,24 +120,27 @@ struct FfmState {
 
     private mutating func move(_ point: CGPoint, _ hit: FfmHit, _ focusedId: UInt32?, _ vetoed: Bool, _ nowMs: Int) -> FfmDecision {
         defer { lastPoint = point }
+        lastDropReason = nil
         // Foreign focus change (keyboard, workspace switch, click): wait for real movement
         if let seen = lastSeenFocused, seen != focusedId {
             suppressAnchor = lastPoint ?? point
         }
         lastSeenFocused = .some(focusedId)
         if let anchor = suppressAnchor {
-            if hypot(point.x - anchor.x, point.y - anchor.y) < realMovementPx { return dropPending() }
+            if hypot(point.x - anchor.x, point.y - anchor.y) < realMovementPx { lastDropReason = "suppressed-until-real-movement"; return dropPending() }
             suppressAnchor = nil
         }
-        if buttonDown { return dropPending() }
+        if buttonDown { lastDropReason = "button-held"; return dropPending() }
 
-        guard let id = hit.windowId else { return dropPending() } // gap / nothing: no change
-        if id == lastTarget { return dropPending() } // never refocus the current target
+        guard let id = hit.windowId else { lastDropReason = "no-hit"; return dropPending() } // gap / nothing: no change
+        if id == lastTarget { lastDropReason = "same-as-last-target"; return dropPending() } // never refocus the current target
         if id == focusedId {
             lastTarget = id
+            lastDropReason = "already-focused"
             return dropPending()
         }
-        if vetoed || isBlocked(nowMs: nowMs) { return dropPending() }
+        if vetoed { lastDropReason = "vetoed"; return dropPending() }
+        if isBlocked(nowMs: nowMs) { lastDropReason = "blocked(button/suppressed/cooldown)"; return dropPending() }
         if pending?.windowId == id { return .none }
         pending = nil
         if delayMs > 0 {
@@ -202,4 +207,31 @@ func ffmUnmanagedFrontVeto(focusedWindowId: UInt32?, isManaged: (UInt32) -> Bool
 func ffmShouldRaise(hit: FfmHit, inRaiseApps: Bool) -> Bool {
     if case .floating = hit { return true }
     return inRaiseApps
+}
+
+
+// MARK: AX element under the cursor (menus and popups veto; hosted content of the target does not)
+
+struct FfmAxElementInfo: Equatable, Sendable {
+    let role: String?
+    let subrole: String?
+    let pid: Int32
+    /// The element has a top-level AXWindow (or is one)
+    let hasWindow: Bool
+    let frame: CGRect?
+}
+
+/// Roles of menus, popups and other transient surfaces: always a veto
+func ffmAxRoleIsTransient(_ role: String?) -> Bool {
+    ["AXMenu", "AXMenuItem", "AXMenuBar", "AXMenuBarItem", "AXMenuButton", "AXPopover", "AXSheet", "AXDrawer", "AXPopUpButton"].contains(role ?? "")
+}
+
+/// True if the AX element under the cursor means "do not switch focus" (a menu/popup is open under the cursor).
+/// Elements without an AXWindow used to veto unconditionally; remote-view content (System Settings panes are hosted by
+/// extension processes) may lack one, so such an element only vetoes if it is transient or lies outside the target.
+func ffmAxElementVeto(_ e: FfmAxElementInfo, targetFrame: CGRect?, tolerance: CGFloat = 4) -> Bool {
+    if ffmAxRoleIsTransient(e.role) { return true }
+    if e.hasWindow || e.role == "AXWindow" { return false }
+    if let f = e.frame, let t = targetFrame, t.insetBy(dx: -tolerance, dy: -tolerance).contains(f) { return false }
+    return true
 }
