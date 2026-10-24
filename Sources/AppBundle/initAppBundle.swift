@@ -18,6 +18,7 @@ import Foundation
         _ = await reloadConfig_nonCancellable()
 
         startUnixSocketServer()
+        startMouseDragTap()
         GlobalObserver.initObserver()
         Workspace.garbageCollectUnusedWorkspaces() // init workspaces
         _ = Workspace.all.first?.focusWorkspace()

@@ -155,6 +155,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
 
     "gaps": Parser(\.gaps, parseGaps),
     "focus-follows-mouse": Parser(\.focusFollowsMouse, parseFocusFollowsMouse),
+    "mouse-modifier": Parser(\.mouseModifier, parseMouseModifierConfig),
     "workspace-to-monitor-force-assignment": Parser(\.workspaceToMonitorForceAssignment, parseWorkspaceToMonitorAssignment),
     "on-window-detected": Parser(\.onWindowDetected, parseOnWindowDetectedArray),
 
@@ -415,6 +416,14 @@ private func parseDefaultContainerOrientation(_ raw: OrderedJson, _ backtrace: C
     parseString(raw, backtrace).flatMap {
         DefaultContainerOrientation(rawValue: $0)
             .toResult(.init(backtrace, "Can't parse default container orientation '\($0)'"))
+    }
+}
+
+private func parseMouseModifierConfig(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<String> {
+    parseString(raw, backtrace).flatMap {
+        ($0.isEmpty || parseMouseModifier($0) != nil)
+            ? .success($0)
+            : .failure(.init(backtrace, "Can't parse mouse modifier '\($0)'. Use '' or alt, cmd, ctrl, shift, combined with '-' (e.g. 'ctrl-alt')"))
     }
 }
 
