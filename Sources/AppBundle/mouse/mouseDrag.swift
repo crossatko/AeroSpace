@@ -146,8 +146,10 @@ private func handleMouse(_ type: CGEventType, _ location: CGPoint, _ flags: CGEv
                 mouseDragDropLocation = drag.current
                 if drag.window.isFloating {
                     try? await moveWithMouse(drag.window) // workspace of the monitor it is dropped on
+                } else if drag.resize {
+                    await liveResize(drag)
                 } else {
-                    await liveStep(drag)
+                    await commitDrop(drag)
                 }
                 mouseDragDropLocation = nil
                 // one complete refresh (normalize, layout) for the whole drag
@@ -164,7 +166,7 @@ private func handleMouse(_ type: CGEventType, _ location: CGPoint, _ flags: CGEv
     }
 }
 
-/// One throttled update: the window frame, then (if the previous one is done) the live layout.
+/// One throttled update: the window frame, then the drop target (move) or the live resize.
 @MainActor
 private func dragTick() {
     guard var drag = mouseDrag else { return }
@@ -181,49 +183,66 @@ private func dragTick() {
         }
         return
     }
-    mouseDrag = drag
     applyDragFrame(drag)
-    if feedbackTask != nil || !TrayMenuModel.shared.isEnabled || drag.window.isFloating { return }
-    feedbackTask = Task { @MainActor in
-        mouseDragDropLocation = drag.current
-        await liveStep(drag)
-        mouseDragDropLocation = nil
-        feedbackTask = nil
+    if !TrayMenuModel.shared.isEnabled || drag.window.isFloating { mouseDrag = drag; return }
+    if drag.resize {
+        mouseDrag = drag
+        // live resize (the neighbours follow); later events are skipped until it is done
+        if feedbackTask != nil { return }
+        feedbackTask = Task { @MainActor in
+            mouseDragDropLocation = drag.current
+            await liveResize(drag)
+            mouseDragDropLocation = nil
+            feedbackTask = nil
+        }
+    } else {
+        updateDropTarget(&drag)
+        mouseDrag = drag
     }
 }
 
-/// Live grid / live resize for the current cursor position.
+/// Live resize: the neighbours follow the dragged edge.
 @MainActor
-private func liveStep(_ drag: MouseDrag) async {
+private func liveResize(_ drag: MouseDrag) async {
     let window = drag.window
-    guard case .tilingContainer = window.windowParentCases else { return }
-    let before = window.nodeWorkspace
-    var touched: [Workspace] = before.map { [$0] } ?? []
-    if drag.resize {
-        try? await resizeWithMouse(window)
-    } else {
-        let point = drag.current
-        let workspace = point.monitorApproximation.activeWorkspace
-        let found = point.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: false)
-        if found == nil || found == window { mouseDrag?.lastTarget = nil } // over its own slot (or no tile)
-        guard let target = found, target != window, let targetRect = target.lastAppliedLayoutPhysicalRect?.toCGRect(),
-              isDeepInside(point, targetRect) else { return }
-        let zone = dropZone(at: point, in: targetRect,
-                            previous: mouseDrag?.lastTarget?.windowId == target.windowId ? mouseDrag?.lastTarget?.zone : nil)
-        let dropTarget = DropTarget(windowId: target.windowId, zone: zone)
-        guard dragTargetChanged(previous: mouseDrag?.lastTarget, new: dropTarget) else { return }
-        mouseDrag?.lastTarget = dropTarget
-        showDropPreview(dropZoneRect(of: targetRect, zone: zone))
-        if zone == .center {
-            moveTilingWindow(window) // swap (next to the tile when it comes from another monitor)
-        } else {
-            dropTilingWindow(window, on: target, zone: zone)
-        }
-        touched.append(workspace)
-        before?.normalizeContainers()
-        if workspace != before { workspace.normalizeContainers() }
+    guard case .tilingContainer = window.windowParentCases, let workspace = window.nodeWorkspace else { return }
+    try? await resizeWithMouse(window)
+    if workspace.isVisible { try? await workspace.layoutWorkspace() }
+}
+
+/// Tile move: find the (tile, zone) under the cursor in the UNCHANGED layout and show its
+/// preview. The other tiles stay put until the drop, so the preview matches the screen.
+@MainActor
+private func updateDropTarget(_ drag: inout MouseDrag) {
+    guard case .tilingContainer = drag.window.windowParentCases else { return }
+    let point = drag.current
+    let workspace = point.monitorApproximation.activeWorkspace
+    let found = point.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: false)
+    var hit: (id: UInt32, rect: CGRect)? = nil
+    if let found, found != drag.window, let rect = found.lastAppliedLayoutPhysicalRect?.toCGRect() { hit = (found.windowId, rect) }
+    switch dropTargetUpdate(hit: hit, point: point, previous: drag.lastTarget) {
+        case .reset:
+            drag.lastTarget = nil
+            hideDropPreview()
+        case .keep: break
+        case .set(let target, let rect):
+            drag.lastTarget = target
+            showDropPreview(rect)
     }
-    for workspace in Set(touched) where workspace.isVisible {
+}
+
+/// Mouse up of a tile move: apply what the preview showed, once.
+@MainActor
+private func commitDrop(_ drag: MouseDrag) async {
+    guard let dropTarget = drag.lastTarget, let target = Window.get(byId: dropTarget.windowId),
+          case .tilingContainer = drag.window.windowParentCases,
+          case .tilingContainer = target.windowParentCases,
+          let targetWorkspace = target.nodeWorkspace else { return }
+    let before = drag.window.nodeWorkspace
+    dropTilingWindow(drag.window, on: target, zone: dropTarget.zone)
+    before?.normalizeContainers()
+    if targetWorkspace != before { targetWorkspace.normalizeContainers() }
+    for workspace in Set([before, targetWorkspace].compactMap { $0 }) where workspace.isVisible {
         try? await workspace.layoutWorkspace()
     }
 }

@@ -32,10 +32,23 @@ func isDeepInside(_ point: CGPoint, _ rect: CGRect) -> Bool {
     rect.insetBy(dx: dragTargetMargin(for: rect), dy: dragTargetMargin(for: rect)).contains(point)
 }
 
-/// Whether the live layout has to be redone: only when the slot the dragged window would
-/// take changed (and exists), never per pixel. Generic: a tile id or a (tile, zone) pair.
-func dragTargetChanged<T: Equatable>(previous: T?, new: T?) -> Bool {
-    new != nil && new != previous
+/// Result of one cursor sample of a tile move. The tree is not touched while dragging: the
+/// target and the preview come from the unchanged layout, the drop is applied at mouse up.
+enum DropTargetUpdate: Equatable {
+    /// over the window's own slot / no tile: nothing to drop on, the preview goes away
+    case reset
+    /// on a tile border (not deep inside): the previous target and preview stay
+    case keep
+    case set(DropTarget, previewRect: CGRect)
+}
+
+/// `hit` = the other tile under the cursor (id, rect of the unchanged layout), nil for the
+/// dragged window's own slot or no tile.
+func dropTargetUpdate(hit: (id: UInt32, rect: CGRect)?, point: CGPoint, previous: DropTarget?) -> DropTargetUpdate {
+    guard let hit else { return .reset }
+    guard isDeepInside(point, hit.rect) else { return .keep }
+    let zone = dropZone(at: point, in: hit.rect, previous: previous?.windowId == hit.id ? previous?.zone : nil)
+    return .set(DropTarget(windowId: hit.id, zone: zone), previewRect: dropZoneRect(of: hit.rect, zone: zone))
 }
 
 /// Where in a target tile the cursor is: the four edge regions (a diagonal partition, so the
