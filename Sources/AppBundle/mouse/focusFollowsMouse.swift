@@ -1,55 +1,162 @@
 import AppKit
+import Common
+
+// Glue between NSEvent and the pure decision layer (focusFollowsMouseDecision.swift).
+// Modes: raise = upstream behaviour (focus + AXRaise), no-raise = SkyLight focus without changing the stacking order.
 
 @MainActor private var focusFollowsMouseMonitor: Any? = nil
+@MainActor private var focusFollowsMouseConfig: (FocusFollowsMouseMode, Int, [String])? = nil
 @MainActor private var focusFollowsTask: Task<(), any Error>? = nil
+@MainActor private var focusFollowsTimer: Task<(), any Error>? = nil
+@MainActor private var ffmState = FfmState()
+/// Apps for which no-raise did not verify: they use raise from now on (until AeroSpace restarts)
+@MainActor private var noRaiseFailedApps: Set<String> = []
+@MainActor private var noRaiseUnavailableLogged = false
+
+private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
+    .mouseMoved, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp,
+]
 
 @MainActor func syncFocusFollowsMouse(_ config: Config) {
-    if config.focusFollowsMouse.enabled == (focusFollowsMouseMonitor != nil) {
+    let ffm = config.focusFollowsMouse
+    let wanted: (FocusFollowsMouseMode, Int, [String])? = ffm.effectiveMode == .off ? nil : (ffm.effectiveMode, ffm.delayMs, ffm.raiseApps)
+    if wanted?.0 == focusFollowsMouseConfig?.0 && wanted?.1 == focusFollowsMouseConfig?.1 && wanted?.2 == focusFollowsMouseConfig?.2 {
         return
     }
-
-    if !config.focusFollowsMouse.enabled {
-        NSEvent.removeMonitor(focusFollowsMouseMonitor.orDie())
+    if let monitor = focusFollowsMouseMonitor {
+        NSEvent.removeMonitor(monitor)
         focusFollowsMouseMonitor = nil
-        focusFollowsTask?.cancel()
-        focusFollowsTask = nil
-        return
     }
+    focusFollowsTask?.cancel()
+    focusFollowsTask = nil
+    focusFollowsTimer?.cancel()
+    focusFollowsTimer = nil
+    focusFollowsMouseConfig = wanted
+    guard let (_, delayMs, _) = wanted else { return }
+    ffmState = FfmState(delayMs: delayMs)
 
-    // Interestingly, this callback seems to not fire when the mouse is down which is good,
-    // because this is how I want it to work for windows/tabs/files dragging
-    focusFollowsMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { @MainActor event in
-        let location = event.locationInWindow.withYAxisFlipped
-        focusFollowsTask?.cancel()
-        focusFollowsTask = Task.startUnstructured { @MainActor in
-            guard let token: RunSessionGuard = .isServerEnabled else { return }
-            try checkCancellation()
-            // Ignores macOS menubar dropdown, but, unfortunately, it doesn't ignore non-native menu-like fake windows.
-            // todo: It would be cool to somehow reuse isWindowHeuristic logic here
-            if await isAxWindowUnderMouse(location) == false { return }
-            try checkCancellation()
-            let workspace = location.monitorApproximation.activeWorkspace
-            var window: Window? = nil
-            for child in workspace.floatingWindowsContainer.mruChildren {
-                try checkCancellation()
-                guard let child = child as? Window else { continue }
-                guard let rect = try await child.getAxRect(.cancellable) else { continue }
-                if rect.contains(location) {
-                    window = child
-                    break
+    // Global monitors do not fire for our own app's events, which is fine. Button events are needed for the
+    // "no focus change while a button is held" and "mouse-down cancels" rules (the old code relied on
+    // mouseMoved not firing during drags).
+    focusFollowsMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: ffmMonitoredEvents) { @MainActor event in
+        let now = Int(ProcessInfo.processInfo.systemUptime * 1000)
+        switch event.type {
+            case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+                focusFollowsTask?.cancel() // an in-flight hit-test must not turn into a focus change after the click
+                applyDecision(ffmState.feed(.mouseDown, nowMs: now))
+            case .leftMouseUp, .rightMouseUp, .otherMouseUp:
+                _ = ffmState.feed(.mouseUp, nowMs: now)
+            default:
+                let location = event.locationInWindow.withYAxisFlipped
+                if NSEvent.pressedMouseButtons != 0 {
+                    _ = ffmState.feed(.mouseDown, nowMs: now) // missed the down event (e.g. started outside)
+                    return
                 }
-            }
-            if window == nil {
-                window = location.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: true)
-            }
-            if let window {
-                try await runLightSession(.focusFollowsMouse, token) {
-                    _ = window.focusWindow()
-                    window.nativeFocus()
+                focusFollowsTask?.cancel()
+                focusFollowsTask = Task.startUnstructured { @MainActor in
+                    guard let token: RunSessionGuard = .isServerEnabled else { return }
+                    try checkCancellation()
+                    let hit = try await ffmHitTestInLayout(location)
+                    try checkCancellation()
+                    let focusedId = focus.windowOrNil?.windowId
+                    let now = Int(ProcessInfo.processInfo.systemUptime * 1000)
+                    // Menus/popups are vetoed via AX, but only when we are about to act (AX is slow)
+                    if ffmState.wouldAct(hit, focusedId: focusedId, nowMs: now) {
+                        // Ignores macOS menubar dropdown, but not non-native menu-like fake windows
+                        if await isAxWindowUnderMouse(location) == false { return }
+                        try checkCancellation()
+                    }
+                    let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId), nowMs: now)
+                    applyDecision(decision, token: token)
                 }
-            }
         }
     }
+}
+
+@MainActor private func applyDecision(_ decision: FfmDecision, token: RunSessionGuard? = nil) {
+    switch decision {
+        case .none: break
+        case .cancelPending:
+            focusFollowsTimer?.cancel()
+            focusFollowsTimer = nil
+        case .scheduleFocus(let hit, let afterMs):
+            focusFollowsTimer?.cancel()
+            focusFollowsTimer = Task.startUnstructured { @MainActor in
+                try await Task.sleep(for: .milliseconds(afterMs))
+                guard let token: RunSessionGuard = .isServerEnabled else { return }
+                let now = Int(ProcessInfo.processInfo.systemUptime * 1000)
+                if case .focus(let h) = ffmState.feed(.timerFired(windowId: hit.windowId.orDie()), nowMs: now) {
+                    await focusWindowFollowingMouse(h, token)
+                }
+            }
+        case .focus(let hit):
+            focusFollowsTimer?.cancel()
+            focusFollowsTimer = nil
+            guard let token = token ?? .isServerEnabled else { return }
+            Task.startUnstructured { @MainActor in await focusWindowFollowingMouse(hit, token) }
+    }
+}
+
+@MainActor private func focusWindowFollowingMouse(_ hit: FfmHit, _ token: RunSessionGuard) async {
+    guard let id = hit.windowId, let window = Window.get(byId: id) else { return }
+    guard let mode = focusFollowsMouseConfig?.0 else { return }
+    let raiseApps = focusFollowsMouseConfig?.2 ?? []
+    let bundleId = window.app.rawAppBundleId ?? ""
+    var useRaise = mode == .raise
+    if mode == .noRaise {
+        // Floating windows overlap each other and tiling ones, and no-raise breaks the "MRU order == stacking order"
+        // assumption the floating hit-test relies on, so they always raise. Tiling windows never overlap.
+        if case .floating = hit { useRaise = true }
+        if raiseApps.contains(bundleId) || noRaiseFailedApps.contains(bundleId) { useRaise = true }
+        if !isNoRaiseFocusAvailable {
+            if !noRaiseUnavailableLogged {
+                noRaiseUnavailableLogged = true
+                eprint("focus-follows-mouse: SkyLight symbols for no-raise are missing on this macOS, falling back to raise")
+            }
+            useRaise = true
+        }
+    }
+    try? await runLightSession(.focusFollowsMouse, token) {
+        _ = window.focusWindow()
+        if useRaise {
+            window.nativeFocus()
+        }
+    }
+    if useRaise { return }
+    guard let macWindow = window as? MacWindow else { return }
+    let pid = macWindow.macApp.nsApp.processIdentifier
+    let ok = await noRaiseFocusAndVerify(pid: pid, windowId: id)
+    if !ok {
+        eprint("focus-follows-mouse: no-raise focus did not take effect for '\(bundleId)', using raise for this app from now on")
+        noRaiseFailedApps.insert(bundleId)
+        window.nativeFocus()
+    }
+}
+
+@concurrent
+private nonisolated func noRaiseFocusAndVerify(pid: pid_t, windowId: UInt32) async -> Bool {
+    focusWindowWithoutRaise(pid: pid, windowId: windowId) && verifyNoRaiseFocus(pid: pid, windowId: windowId)
+}
+
+/// Hit-test on AeroSpace's own layout: floating windows by MRU order (AX rect), tiling windows by the rects of the
+/// last applied layout. Window server z-order is never consulted, so focus changes cannot change the answer.
+@MainActor private func ffmHitTestInLayout(_ location: CGPoint) async throws -> FfmHit {
+    let workspace = location.monitorApproximation.activeWorkspace
+    var floating: [FfmFloating] = []
+    for child in workspace.floatingWindowsContainer.mruChildren {
+        try checkCancellation()
+        guard let child = child as? Window else { continue }
+        guard let rect = try await child.getAxRect(.cancellable) else { continue }
+        floating.append(FfmFloating(windowId: child.windowId, rect: CGRect(x: rect.topLeftX, y: rect.topLeftY, width: rect.width, height: rect.height)))
+    }
+    let tiling = location.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: true)
+    let r = tiling?.lastAppliedLayoutPhysicalRect
+    return ffmHitTest(
+        location,
+        floatingTopFirst: floating,
+        tilingId: tiling?.windowId,
+        tilingRect: r.map { CGRect(x: $0.topLeftX, y: $0.topLeftY, width: $0.width, height: $0.height) },
+    )
 }
 
 @concurrent
