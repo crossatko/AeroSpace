@@ -468,7 +468,9 @@ This technique eliminates the need for an additional binding for focusing floati
 
 With `mouse-modifier = 'alt'` (default `''`, off), holding the modifier and left-dragging anywhere on a window moves it,
 and right-dragging resizes it from the nearest corner.
-Tiling windows swap with the tile under the cursor on drop (or change their weights when resized), floating windows just move.
+Tiling windows use drop zones: dropping on the edge of a tile splits it on that side, dropping on its centre swaps the two windows.
+The other tiles stay where they are while dragging (a preview shows the target) and the change is applied once when the button is released; resizing changes the weights live.
+Floating windows just move or resize.
 Accepted values: `'alt'`, `'cmd'`, `'ctrl'`, `'ctrl-alt'` (also `'shift'`).
 Only the exact modifier set triggers, so Option+Shift+drag still reaches the app, and clicks without the modifier are never touched.
 The feature needs the Accessibility permission.
@@ -486,6 +488,9 @@ Other options:
 
 * `focus-follows-mouse.delay-ms` (default `0`): the cursor has to rest over a window for this long before focus moves
 * `focus-follows-mouse.raise-apps` (default `[]`): bundle ids of apps that always use `'raise'`, e.g. apps that ignore no-raise focus
+* `focus-follows-mouse.debug-log` (default `false`): appends one line per focus decision and veto reason to `~/Library/Logs/AeroSpace/ffm.log` (capped at 1 MB)
+
+`focus-follows-mouse = 'no-raise'` is accepted as a shorthand for `focus-follows-mouse.mode = 'no-raise'`.
 
 In `'no-raise'` mode floating windows are not raised either; among overlapping floating windows the one topmost at the cursor (real stacking order) gets focus, and only apps listed in `raise-apps` are raised.
 Focus does not move while a mouse button is held, so drags (including <<mouse-modifier,modifier drags>>) are not affected.
