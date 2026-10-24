@@ -5,15 +5,15 @@ import Common
 enum HiddenWindowPlacement: String, CaseIterable {
     /// Upstream behaviour: every hidden window goes to the same screen corner
     case corner
-    /// Hidden windows go beyond the right edge (lower workspaces) or the left edge (higher workspaces), see `missionControlMirrorsParkedPositions`
+    /// Hidden windows go beyond the left edge (lower workspaces) or the right edge (higher workspaces), see `missionControlMirrorsParkedPositions`
     /// of the monitor, so Mission Control arranges workspaces spatially
     case directional
 }
 
-/// Mission Control mirrors parked positions horizontally (observed on macOS 26.6: windows parked beyond the left edge
-/// show up on its right side and vice versa). So lower workspaces are parked on the right, higher ones on the left.
-/// The vertical band order (nearest workspace on top) is unverified in Mission Control.
-let missionControlMirrorsParkedPositions = true
+/// With 'Group windows by application' ON, Mission Control follows the parked sides directly (lower workspaces left).
+/// With grouping OFF it appeared mirrored and became random with 3+ workspace groups (both observed on macOS 26.6).
+/// Set to true to mirror for the grouping-off case. The vertical band order (nearest workspace on top) is unverified.
+let missionControlMirrorsParkedPositions = false
 
 enum HiddenEdge: Equatable {
     case left, right, bottom
@@ -94,7 +94,7 @@ func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth
             let x = slot.edge == .left ? r.minX + sliver - windowWidth : r.maxX - sliver
             return CGPoint(x: x, y: min(y, r.maxY - 1))
         case .bottom:
-            // Mission Control mirrors: lower workspaces in the right half, higher in the left half; the nearest one is next to the middle
+            // Lower workspaces in the left half, higher in the right half (swapped when mirroring); the nearest one is next to the middle
             let half = r.width / 2
             let inRightHalf = slot.isLowerSide == missionControlMirrorsParkedPositions
             let index = inRightHalf ? slot.band : slot.bandCount - 1 - slot.band
