@@ -17,6 +17,15 @@ start-at-login = false
 # After setting this to true, reload once manually to start the auto-reloading
 auto-reload-config = false
 
+# Clickable workspaces in the menu bar (fork feature): a second menu bar item with one pill per
+# occupied, visible or focused workspace. Click = focus, right click / Option-click = menu.
+# The stock item shrinks to an icon.
+menu-bar-clickable = false
+# Scroll over the clickable item = previous/next non-empty workspace (no wrap-around)
+menu-bar-scroll-switch = false
+# Maximum width of the clickable item in points, 0 = auto (40% of the screen, less the notch)
+menu-bar-max-width = 0
+
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true

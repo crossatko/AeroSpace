@@ -73,6 +73,10 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
         }.keyboardShortcut("Q", modifiers: .command)
     } label: {
         switch (viewModel.axPermissionStatus, viewModel.isEnabled) {
+            case (.granted, true) where viewModel.menuBarClickable:
+                Image(systemName: "rectangle.split.3x1")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
             case (.granted, true):
                 MenuBarLabel().environmentObject(viewModel)
             case (.granted, false):
