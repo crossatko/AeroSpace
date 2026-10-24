@@ -14,6 +14,8 @@ public final class TrayMenuModel: ObservableObject {
     @Published var experimentalUISettings: ExperimentalUISettings = ExperimentalUISettings()
     @Published var sponsorshipMessage: String = sponsorshipPrompts.randomElement().orDie()
     @Published var lastReloadConfigContainedWarnings: Bool = false
+    /// `menu-bar-clickable`: the stock label shrinks to an icon, the workspaces live in ClickableWorkspaceBar
+    @Published var menuBarClickable: Bool = false
     @Published var axPermissionStatus: AxPermissionStatus = .waitingWithPrompt
 }
 
@@ -35,6 +37,7 @@ enum AxPermissionStatus: Equatable {
         }
         .joined(separator: " │ ")
     TrayMenuModel.shared.workspaces = Workspace.all.map {
+        let wsOrigin = $0.workspaceMonitor.rect.topLeftCorner
         let apps = $0.allLeafWindowsRecursive.map { $0.app.name?.takeIf { !$0.isEmpty } }.filterNotNil().toSet()
         let dash = " - "
         let suffix = switch true {
@@ -50,6 +53,7 @@ enum AxPermissionStatus: Equatable {
             isEffectivelyEmpty: $0.isEffectivelyEmpty,
             isVisible: $0.isVisible,
             hasFullscreenWindows: hasFullscreenWindows,
+            monitorIndex: sortedMonitors.firstIndex { $0.rect.topLeftCorner == wsOrigin } ?? 0,
         )
     }
     var items = sortedMonitors.map {
@@ -77,6 +81,8 @@ struct WorkspaceViewModel: Hashable {
     let isEffectivelyEmpty: Bool
     let isVisible: Bool
     let hasFullscreenWindows: Bool
+    /// Index of the monitor (left to right) the workspace is assigned to
+    var monitorIndex: Int = 0
 }
 
 enum TrayItemType: String, Hashable {

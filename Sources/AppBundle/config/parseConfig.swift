@@ -146,6 +146,13 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "auto-reload-config": Parser(\.autoReloadConfig, parseBool),
     "automatically-unhide-macos-hidden-apps": Parser(\.automaticallyUnhideMacosHiddenApps, parseBool),
     "accordion-padding": Parser(\.accordionPadding, parseInt),
+    "menu-bar-clickable": Parser(\.menuBarClickable, parseBool),
+    "menu-bar-scroll-switch": Parser(\.menuBarScrollSwitch, parseBool),
+    "menu-bar-max-width": Parser(\.menuBarMaxWidth) { raw, backtrace in
+        parseInt(raw, backtrace).flatMap { n in
+            n >= 0 ? .success(n) : .failure(.init(backtrace, "Expected a non-negative number of points (0 = auto), got \(n)"))
+        }
+    },
     persistentWorkspacesKey: Parser(\.persistentWorkspaces, parsePersistentWorkspaces),
     "exec-on-workspace-change": Parser(\.execOnWorkspaceChange, parseArrayOfStrings),
     "exec": Parser(\.execConfig, parseExecConfig),
