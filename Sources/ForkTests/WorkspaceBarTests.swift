@@ -150,3 +150,12 @@ private func names(_ l: WorkspaceBarLayout) -> [String] { l.pills.map { $0.item.
         #expect(t.feed(delta: -1, at: 0.2, isPrecise: false) == .next)
     }
 }
+
+@Suite struct WorkspaceBarCoordinateTests {
+    @Test func buttonXToBarX() {
+        #expect(barLocalX(pointInButtonX: 30, barOriginX: 0) == 30)
+        #expect(barLocalX(pointInButtonX: 30, barOriginX: 4) == 26)
+        let l = layoutWorkspaceBar([item("1"), item("2")])
+        #expect(l.hitTest(x: barLocalX(pointInButtonX: 34, barOriginX: 4)) == "2")
+    }
+}

@@ -31,11 +31,24 @@ import Common
 
     init() {
         statusItem.button?.addSubview(barView)
+        // Clicks must go through the button's own action: the subview never gets mouseUp, because it does not
+        // override mouseDown, so the event goes up to NSStatusBarButton, whose tracking loop swallows mouseUp.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(barClicked(_:))
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         let model = TrayMenuModel.shared
         // @Published emits before the property changes, so the sinks use the emitted values
         model.$workspaces.sink { [weak self] ws in self?.refresh(workspaces: ws) }.store(in: &subscriptions)
         model.$isEnabled.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }.store(in: &subscriptions)
         model.$axPermissionStatus.sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }.store(in: &subscriptions)
+    }
+
+    @objc private func barClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+        let x = barLocalX(pointInButtonX: sender.convert(event.locationInWindow, from: nil).x, barOriginX: barView.frame.minX)
+        let isRight = event.type == .rightMouseUp || event.modifierFlags.contains(.option)
+        if isRight { barView.showMenu(atX: x, in: sender); return }
+        if let name = barView.layout.hitTest(x: x) { focusWorkspaceFromBar(name) }
     }
 
     func remove() {
@@ -131,14 +144,6 @@ import Common
         }
     }
 
-    override func mouseUp(with event: NSEvent) {
-        if event.modifierFlags.contains(.option) { return showMenu(event) }
-        guard let name = layout.hitTest(x: convert(event.locationInWindow, from: nil).x) else { return }
-        focusWorkspaceFromBar(name)
-    }
-
-    override func rightMouseUp(with event: NSEvent) { showMenu(event) }
-
     override func scrollWheel(with event: NSEvent) {
         guard scrollSwitch else { return super.scrollWheel(with: event) }
         // Vertical wheel, or the dominant axis of a trackpad scroll
@@ -148,7 +153,7 @@ import Common
         }
     }
 
-    private func showMenu(_ event: NSEvent) {
+    func showMenu(atX x: CGFloat, in button: NSView) {
         let menu = NSMenu()
         let target = BarMenuTarget.shared
         for ws in TrayMenuModel.shared.workspaces {
@@ -165,7 +170,7 @@ import Common
         let quit = NSMenuItem(title: "Quit \(aeroSpaceAppName)", action: #selector(BarMenuTarget.quit), keyEquivalent: "")
         quit.target = target
         menu.addItem(quit)
-        menu.popUp(positioning: nil, at: NSPoint(x: convert(event.locationInWindow, from: nil).x, y: 0), in: self)
+        menu.popUp(positioning: nil, at: NSPoint(x: x, y: 0), in: button)
     }
 }
 
