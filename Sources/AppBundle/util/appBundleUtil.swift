@@ -54,6 +54,7 @@ private struct AppServerTerminationHandler: TerminationHandler {
 
 @MainActor
 func terminateApp() -> Never {
+    lifecycleLog("TERMINATE terminateApp() stack:\n" + Thread.callStackSymbols.prefix(12).joined(separator: "\n"))
     NSApplication.shared.terminate(nil)
     die("Unreachable code")
 }
@@ -146,4 +147,28 @@ func checkCancellation(_ cm: CancellationMode = .cancellable) throws(Cancellatio
 public enum CancellationMode: Equatable, Sendable {
     case cancellable
     case nonCancellable
+}
+
+// ~/Library/Logs/AeroSpace/lifecycle.log: one line per start and per way the app can end (diagnostics for unexplained exits).
+// A START without a matching TERMINATE/SIGNAL line before the next START means a crash or SIGKILL.
+@MainActor func lifecycleLog(_ message: String) { appendDebugLog(file: "lifecycle.log", message) }
+
+private nonisolated(unsafe) var lifecycleSignalSources: [DispatchSourceSignal] = []
+
+@MainActor func initLifecycleLog() {
+    lifecycleLog("START pid=\(ProcessInfo.processInfo.processIdentifier) \(aeroSpaceAppVersion) \(gitShortHash)")
+    NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+        MainActor.assumeIsolated { lifecycleLog("TERMINATE willTerminate notification") }
+    }
+    for sig in [SIGTERM, SIGHUP, SIGINT] {
+        unsafe signal(sig, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+        source.setEventHandler {
+            MainActor.assumeIsolated { lifecycleLog("SIGNAL \(sig) received, exiting") }
+            unsafe signal(sig, SIG_DFL)
+            raise(sig)
+        }
+        source.resume()
+        lifecycleSignalSources.append(source)
+    }
 }

@@ -151,6 +151,7 @@ func getTextEditorToOpenConfig() -> URL {
 }
 
 @MainActor func quitFromMenu() {
+    lifecycleLog("QUIT requested from a menu")
     Task.startUnstructured {
         terminationHandler?.beforeTermination()
         terminateApp()
