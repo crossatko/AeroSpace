@@ -177,6 +177,22 @@ private struct Driver {
         // Dock/Mission Control overlay (layer 20) counts
         #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(30, pid: 4, layer: 20)] + wins, ownPid: 7))
     }
+
+    @Test func managedTiledWindowAboveFloatingTargetDoesNotVeto() {
+        let p = CGPoint(x: 100, y: 100)
+        let target = w(5, pid: 1)
+        let tiledAbove = w(9, pid: 2)
+        let panel = w(30, pid: 4, layer: 20)
+        let managed: (UInt32) -> Bool = { $0 == 9 }
+        // Floating target under a managed tiled window (e.g. after a click on it): raising fixes it, no veto
+        #expect(!ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [tiledAbove, target], ownPid: 7, raisesTarget: true, isManaged: managed))
+        // A tiled target never raises: the cover stays a veto
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [tiledAbove, target], ownPid: 7, raisesTarget: false, isManaged: managed))
+        // Unmanaged layer-0 window above still vetoes
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [tiledAbove, target], ownPid: 7, raisesTarget: true))
+        // Panels above (even with a managed window below them) still veto
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [panel, tiledAbove, target], ownPid: 7, raisesTarget: true, isManaged: managed))
+    }
 }
 
 @MainActor
