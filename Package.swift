@@ -76,5 +76,13 @@ let package = Package(
             ],
             swiftSettings: swiftSettings,
         ),
+        // Swift Testing suite for the fork's pure logic, runs without XCTest
+        .testTarget(
+            name: "ForkTests",
+            dependencies: [
+                .target(name: "AppBundle"),
+            ],
+            swiftSettings: swiftSettings,
+        ),
     ],
 )

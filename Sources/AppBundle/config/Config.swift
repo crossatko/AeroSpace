@@ -63,8 +63,24 @@ struct Config: ConvenienceMutable {
     var onModeChanged: Shell<any Command> = .empty
 }
 
+enum FocusFollowsMouseMode: String, Equatable, Sendable {
+    case off
+    /// Focus the window under the cursor without changing the stacking order (private SkyLight API, yabai technique)
+    case noRaise = "no-raise"
+    /// Upstream behaviour: AXRaise + activate
+    case raise
+}
+
 struct FocusFollowsMouse: ConvenienceMutable {
+    /// Legacy switch: `enabled = true` means `mode = 'raise'` unless `mode` is set explicitly
     var enabled: Bool = false
+    var mode: FocusFollowsMouseMode? = nil
+    /// Dwell time before the focus changes. 0 = instant
+    var delayMs: Int = 0
+    /// Bundle ids that always get the raising variant even in no-raise mode
+    var raiseApps: [String] = []
+
+    var effectiveMode: FocusFollowsMouseMode { mode ?? (enabled ? .raise : .off) }
 }
 
 enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvertible {
