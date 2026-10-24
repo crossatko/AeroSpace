@@ -18,10 +18,11 @@ import Testing
 
     @Test func sideChoice() {
         let slots = hiddenSlots(workspaces: ["1", "2", "3", "4", "5", "6"], visible: "4", geometry: geometry())
-        #expect(slots["1"]?.edge == .left)
-        #expect(slots["3"]?.edge == .left)
-        #expect(slots["5"]?.edge == .right)
-        #expect(slots["6"]?.edge == .right)
+        // Mission Control mirrors parked positions: lower workspaces park right, higher ones left
+        #expect(slots["1"]?.edge == .right)
+        #expect(slots["3"]?.edge == .right)
+        #expect(slots["5"]?.edge == .left)
+        #expect(slots["6"]?.edge == .left)
         #expect(slots["4"] == nil)
     }
 
@@ -44,9 +45,9 @@ import Testing
 
     @Test func firstAndLastWorkspaceHaveOneSide() {
         let first = hiddenSlots(workspaces: ["1", "2", "3"], visible: "1", geometry: geometry())
-        #expect(first.values.allSatisfy { $0.edge == .right })
+        #expect(first.values.allSatisfy { $0.edge == .left })
         let last = hiddenSlots(workspaces: ["1", "2", "3"], visible: "3", geometry: geometry())
-        #expect(last.values.allSatisfy { $0.edge == .left })
+        #expect(last.values.allSatisfy { $0.edge == .right })
     }
 
     @Test func targetsStayOnTheEdgeWithOnePixelSliver() {
@@ -88,8 +89,8 @@ import Testing
         let g = geometry(others: [leftNeighbour])
         #expect(g.leftBlocked && !g.rightBlocked && !g.bottomBlocked)
         let slots = hiddenSlots(workspaces: ["1", "2", "3"], visible: "2", geometry: g)
-        #expect(slots["1"]?.edge == .bottom)
-        #expect(slots["3"]?.edge == .right)
+        #expect(slots["3"]?.edge == .bottom) // higher workspaces want the left edge
+        #expect(slots["1"]?.edge == .right)
     }
 
     @Test func displayAboveBlocksNothing() {
@@ -109,10 +110,11 @@ import Testing
         let slots = hiddenSlots(workspaces: ["1", "2", "3", "4", "5"], visible: "3", geometry: g)
         #expect(slots.values.allSatisfy { $0.edge == .bottom })
         let x = { (n: String) in hiddenTarget(slot: slots[n]!, geometry: g, windowWidth: 300, relative: CGPoint(x: 0.5, y: 0), isZoom: false).x }
-        #expect(x("1") < x("2"))
-        #expect(x("2") < x("4"))
-        #expect(x("4") < x("5"))
-        #expect(x("2") < 500 && x("4") >= 500)
+        // Mirrored: higher workspaces in the left half, lower in the right half, nearest next to the middle
+        #expect(x("5") < x("4"))
+        #expect(x("4") < x("2"))
+        #expect(x("2") < x("1"))
+        #expect(x("4") < 500 && x("2") >= 500)
         #expect(hiddenTarget(slot: slots["1"]!, geometry: g, windowWidth: 300, relative: .zero, isZoom: false).y == 799)
     }
 
@@ -125,8 +127,8 @@ import Testing
         // One side usable, the other not
         let g2 = geometry(others: [leftN, below])
         let slots = hiddenSlots(workspaces: ["1", "2", "3"], visible: "2", geometry: g2)
-        #expect(slots["1"] == nil)
-        #expect(slots["3"]?.edge == .right)
+        #expect(slots["3"] == nil)
+        #expect(slots["1"]?.edge == .right)
     }
 
     @Test func unknownVisibleWorkspaceGivesNoSlots() {
