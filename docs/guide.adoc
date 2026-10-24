@@ -302,7 +302,7 @@ That's why unless you override `exec` section in your config, AeroSpace falls ba
     PATH = '/opt/homebrew/bin:/opt/homebrew/sbin:${PATH}'
 ----
 
-[#tree]
+[#gestures]
 == Trackpad workspace swipe
 
 `[gestures]` table (fork feature, off by default): a swipe with `workspace-swipe-fingers` fingers switches the monitor under the cursor to its next/previous workspace, once per swipe.
@@ -316,6 +316,7 @@ That's why unless you override `exec` section in your config, AeroSpace falls ba
 Turn the macOS gesture with the same finger count off (System Settings > Trackpad > More Gestures).
 The listen-only event tap on gesture events does not hold any input back; Accessibility (already required) is the expected permission, Input Monitoring should not be needed.
 
+[#tree]
 == Tree
 
 AeroSpace stores all windows and containers in a tree.
@@ -471,6 +472,23 @@ Tiling windows swap with the tile under the cursor on drop (or change their weig
 Accepted values: `'alt'`, `'cmd'`, `'ctrl'`, `'ctrl-alt'` (also `'shift'`).
 Only the exact modifier set triggers, so Option+Shift+drag still reaches the app, and clicks without the modifier are never touched.
 The feature needs the Accessibility permission.
+
+[#focus-follows-mouse]
+=== Focus follows mouse
+
+`focus-follows-mouse.mode` (default `'off'`) focuses the window under the cursor when the mouse moves.
+
+* `'off'`: disabled
+* `'raise'`: focus and bring the window to the front (the legacy `focus-follows-mouse.enabled = true` means this)
+* `'no-raise'`: focus the window under the cursor without bringing it to the front (uses a private macOS API; falls back to `'raise'` per app if it fails)
+
+Other options:
+
+* `focus-follows-mouse.delay-ms` (default `0`): the cursor has to rest over a window for this long before focus moves
+* `focus-follows-mouse.raise-apps` (default `[]`): bundle ids of apps that always use `'raise'`, e.g. apps that ignore no-raise focus
+
+In `'no-raise'` mode floating windows are always raised, otherwise they could stay hidden behind the tiled windows that were just focused.
+Focus does not move while a mouse button is held, so drags (including <<mouse-modifier,modifier drags>>) are not affected.
 
 [#emulation-of-virtual-workspaces]
 == Emulation of virtual workspaces
