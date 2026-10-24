@@ -43,3 +43,43 @@ import Testing
         #expect(l.maxX == 500 && l.maxY == 400 && l.width == 120)
     }
 }
+
+@Suite struct MouseDragLiveTests {
+    @Test func throttleFiresAtMostOncePerInterval() {
+        var t = DragThrottle(interval: 0.02)
+        let a = t.fire(at: 100), b = t.fire(at: 100.005), c = t.fire(at: 100.019), d = t.fire(at: 100.021)
+        #expect(a)
+        #expect(!b)
+        #expect(!c)
+        #expect(d)
+    }
+
+    @Test func throttleRemainingForTrailingUpdate() {
+        var t = DragThrottle(interval: 0.02)
+        #expect(t.remaining(at: 5) == 0)
+        _ = t.fire(at: 5)
+        #expect(abs(t.remaining(at: 5.005) - 0.015) < 1e-9)
+        #expect(t.remaining(at: 6) == 0)
+    }
+
+    @Test func targetNeedsDepthInsideTile() {
+        let r = CGRect(x: 0, y: 0, width: 400, height: 300)
+        #expect(isDeepInside(CGPoint(x: 200, y: 150), r))
+        #expect(!isDeepInside(CGPoint(x: 5, y: 150), r))
+        #expect(!isDeepInside(CGPoint(x: 200, y: 296), r))
+        // tiny tile: margin shrinks, centre still counts
+        #expect(isDeepInside(CGPoint(x: 20, y: 20), CGRect(x: 0, y: 0, width: 40, height: 40)))
+    }
+
+    @Test func relayoutOnlyOnTargetChange() {
+        #expect(dragTargetChanged(previous: nil, new: 1))
+        #expect(!dragTargetChanged(previous: 1, new: 1))
+        #expect(dragTargetChanged(previous: 1, new: 2))
+        #expect(!dragTargetChanged(previous: 1, new: nil))
+    }
+
+    @Test func previewFrameFlipsYAndInsets() {
+        let f = dropPreviewFrame(of: CGRect(x: 100, y: 50, width: 400, height: 300), primaryScreenHeight: 1000)
+        #expect(f == CGRect(x: 104, y: 654, width: 392, height: 292))
+    }
+}

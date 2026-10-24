@@ -9,6 +9,7 @@ func movedObs(_: AXObserver, ax: AXUIElement, notif: CFString, _: UnsafeMutableR
     let notif = notif as String
     Task.startUnstructured { @MainActor in
         guard let token: RunSessionGuard = .isServerEnabled else { return }
+        if isMouseDragInProgress { return } // mouse-modifier drag: its own live layout + one refresh at mouse up
         guard let windowId, let window = Window.get(byId: windowId), try await isManipulatedWithMouse(window) else {
             scheduleCancellableCompleteRefreshSession(.ax(notif))
             return
@@ -47,7 +48,7 @@ private func moveFloatingWindow(_ window: Window) async throws {
 }
 
 @MainActor
-private func moveTilingWindow(_ window: Window) {
+func moveTilingWindow(_ window: Window) {
     currentlyManipulatedWithMouseWindowId = window.windowId
     window.lastAppliedLayoutPhysicalRect = nil
     let mouseLocation = mouseLocation

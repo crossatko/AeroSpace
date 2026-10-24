@@ -25,11 +25,22 @@ struct MouseDrag {
     let startMouse: CGPoint
     let startRect: CGRect
     let fromLeft: Bool, fromTop: Bool // corner being dragged when resizing
-    var lastApplied: TimeInterval = 0
+    var throttle = DragThrottle()
     /// Cursor position from the tap: the drag events are swallowed, so
     /// NSEvent.mouseLocation stays frozen at the mouse down point.
     var current: CGPoint
+    /// Tile the dragged window last took over (live grid), to relayout only on a change
+    var lastTarget: UInt32? = nil
 }
+
+/// True from mouse down to the end of the commit at mouse up: AX moved/resized
+/// notifications (our own frame writes, the neighbours following the live layout) must not
+/// start refresh sessions that lay the dragged window back into its tile mid-drag.
+@MainActor var isMouseDragInProgress = false
+/// Live feedback (layout) of a drag event that is still running; later events are skipped
+/// until it is done, the trailing update / mouse up catches up.
+@MainActor private var feedbackTask: Task<Void, Never>? = nil
+@MainActor private var trailingTask: Task<Void, Never>? = nil
 
 @MainActor private var mouseDrag: MouseDrag? = nil {
     didSet { mouseDragActive.withLock { [active = mouseDrag != nil] in $0 = active } }
@@ -107,6 +118,9 @@ private func handleMouse(_ type: CGEventType, _ location: CGPoint, _ flags: CGEv
                   let wanted = parseMouseModifier(config.mouseModifier),
                   mouseModifierMatches(flags, wanted: wanted),
                   let (window, rect) = managedWindow(at: location) else { return false }
+            isMouseDragInProgress = true
+            // before nativeFocus: its refresh session must not lay the window out under the cursor
+            if case .tilingContainer = window.windowParentCases { currentlyManipulatedWithMouseWindowId = window.windowId }
             window.nativeFocus()
             mouseDrag = MouseDrag(window: window, resize: type == .rightMouseDown, startMouse: location, startRect: rect,
                                   fromLeft: location.x < rect.midX, fromTop: location.y < rect.midY, current: location)
@@ -114,27 +128,30 @@ private func handleMouse(_ type: CGEventType, _ location: CGPoint, _ flags: CGEv
         case .leftMouseDragged, .rightMouseDragged:
             guard var drag = mouseDrag else { return false }
             drag.current = location
-            let now = ProcessInfo.processInfo.systemUptime
-            if now - drag.lastApplied < 1.0 / 60 { // AX is slow, 60 updates/s is plenty
-                mouseDrag = drag
-                return true
-            }
-            drag.lastApplied = now
             mouseDrag = drag
-            let dx = location.x - drag.startMouse.x, dy = location.y - drag.startMouse.y
-            applyDragFrame(drag, dx: dx, dy: dy)
+            dragTick()
             return true
         case .leftMouseUp, .rightMouseUp:
             guard let drag = mouseDrag else { return false }
             mouseDrag = nil
+            trailingTask?.cancel()
+            hideDropPreview()
+            let running = feedbackTask
             Task { @MainActor in
+                await running?.value
+                defer { isMouseDragInProgress = false }
                 guard TrayMenuModel.shared.isEnabled else { return }
                 // the last drag events may have been skipped: catch up at the drop point
-                applyDragFrame(drag, dx: drag.current.x - drag.startMouse.x, dy: drag.current.y - drag.startMouse.y)
+                applyDragFrame(drag)
                 mouseDragDropLocation = drag.current
-                if drag.resize { try? await resizeWithMouse(drag.window) } else { try? await moveWithMouse(drag.window) }
+                if drag.window.isFloating {
+                    try? await moveWithMouse(drag.window) // workspace of the monitor it is dropped on
+                } else {
+                    await liveStep(drag)
+                }
                 mouseDragDropLocation = nil
                 // one complete refresh (normalize, layout) for the whole drag
+                isMouseDragInProgress = false
                 if currentlyManipulatedWithMouseWindowId != nil {
                     try? await resetManipulatedWithMouseIfPossible()
                 } else {
@@ -147,8 +164,65 @@ private func handleMouse(_ type: CGEventType, _ location: CGPoint, _ flags: CGEv
     }
 }
 
+/// One throttled update: the window frame, then (if the previous one is done) the live layout.
 @MainActor
-private func applyDragFrame(_ drag: MouseDrag, dx: CGFloat, dy: CGFloat) {
+private func dragTick() {
+    guard var drag = mouseDrag else { return }
+    let now = ProcessInfo.processInfo.systemUptime
+    guard drag.throttle.fire(at: now) else {
+        // keep the last cursor position: update once the interval is over
+        if trailingTask == nil {
+            let wait = drag.throttle.remaining(at: now)
+            trailingTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(wait))
+                trailingTask = nil
+                if !Task.isCancelled { dragTick() }
+            }
+        }
+        return
+    }
+    mouseDrag = drag
+    applyDragFrame(drag)
+    if feedbackTask != nil || !TrayMenuModel.shared.isEnabled || drag.window.isFloating { return }
+    feedbackTask = Task { @MainActor in
+        mouseDragDropLocation = drag.current
+        await liveStep(drag)
+        mouseDragDropLocation = nil
+        feedbackTask = nil
+    }
+}
+
+/// Live grid / live resize for the current cursor position.
+@MainActor
+private func liveStep(_ drag: MouseDrag) async {
+    let window = drag.window
+    guard case .tilingContainer = window.windowParentCases else { return }
+    let before = window.nodeWorkspace
+    var touched: [Workspace] = before.map { [$0] } ?? []
+    if drag.resize {
+        try? await resizeWithMouse(window)
+    } else {
+        let point = drag.current
+        let workspace = point.monitorApproximation.activeWorkspace
+        let found = point.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: false)
+        if found == nil || found == window { mouseDrag?.lastTarget = nil } // over its own slot (or no tile)
+        guard let target = found, target != window, let targetRect = target.lastAppliedLayoutPhysicalRect,
+              isDeepInside(point, targetRect.toCGRect()),
+              dragTargetChanged(previous: mouseDrag?.lastTarget, new: target.windowId) else { return }
+        mouseDrag?.lastTarget = target.windowId
+        showDropPreview(targetRect.toCGRect())
+        moveTilingWindow(window)
+        touched.append(workspace)
+        if window.nodeWorkspace != before { before?.normalizeContainers() }
+    }
+    for workspace in Set(touched) where workspace.isVisible {
+        try? await workspace.layoutWorkspace()
+    }
+}
+
+@MainActor
+private func applyDragFrame(_ drag: MouseDrag) {
+    let dx = drag.current.x - drag.startMouse.x, dy = drag.current.y - drag.startMouse.y
     let r = drag.startRect
     if drag.resize {
         let f = resizedDragFrame(start: r, dx: dx, dy: dy, fromLeft: drag.fromLeft, fromTop: drag.fromTop)
