@@ -123,7 +123,7 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
     let bundleId = window.app.rawAppBundleId ?? ""
     var useRaise = mode == .raise
     if mode == .noRaise {
-        // Floating windows raise, tiling ones never do (see ffmShouldRaise)
+        // Only raise-apps raise (see ffmShouldRaise)
         useRaise = ffmShouldRaise(hit: hit, inRaiseApps: raiseApps.contains(bundleId))
         if !isNoRaiseFocusAvailable, !noRaiseUnavailableLogged {
             noRaiseUnavailableLogged = true
@@ -168,6 +168,10 @@ private nonisolated func noRaiseFocusAndVerify(pid: pid_t, windowId: UInt32) asy
     let tiling = location.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: true)
     let r = tiling?.lastAppliedLayoutPhysicalRect
     let tilingRect = r.map { CGRect(x: $0.topLeftX, y: $0.topLeftY, width: $0.width, height: $0.height) }
+    // Only when the cursor is inside 2+ floating frames: order them by the real stacking (no hover raise any more)
+    if floating.filter({ $0.rect.contains(location) }).count >= 2 {
+        floating = ffmOrderFloatingByZ(floating, zOrderFrontToBack: await ffmZOrder())
+    }
     let result = ffmHitTest(location, floatingTopFirst: floating, tilingId: tiling?.windowId, tilingRect: tilingRect)
     switch result {
         case .floating(let id): lastHitRect = floating.first { $0.windowId == id }?.rect
@@ -212,11 +216,11 @@ private nonisolated func axElementUnderMouse(_ location: CGPoint) async -> FfmAx
         return true
     }
     let targetPid = target.macApp.nsApp.processIdentifier
-    let isFloatingTarget: Bool = if case .floating = hit { true } else { false }
+    let raiseApps = focusFollowsMouseConfig?.2 ?? []
     let probe = await ffmProbe(location)
     let vetoed = ffmUnmanagedFrontVeto(focusedWindowId: probe.focusedWindowId) { Window.get(byId: $0) != nil }
         || ffmTopmostVeto(location, targetId: targetId, targetPid: targetPid, windowsFrontToBack: probe.windows, ownPid: ProcessInfo.processInfo.processIdentifier,
-            raisesTarget: isFloatingTarget, isManaged: { Window.get(byId: $0) != nil })
+            raisesTarget: raiseApps.contains(target.app.rawAppBundleId ?? ""), isManaged: { Window.get(byId: $0) != nil })
     lastVeto = vetoed ? (targetId, nowMs) : nil
     if vetoed && ffmDebugLogEnabled { ffmLogVeto(location, targetId, targetPid, probe) }
     return vetoed
@@ -334,4 +338,21 @@ private let ffmLogMaxBytes = 1_000_000
     if let l = lastLoggedDrop, l.reason == reason, l.target == target { return false }
     lastLoggedDrop = (reason, target)
     return true
+}
+
+/// Window server order (front to back), cached for 100 ms so it is not queried per mouse move
+@MainActor private var ffmZCache: (ms: Int, ids: [UInt32])? = nil
+
+@MainActor private func ffmZOrder() async -> [UInt32] {
+    let now = Int(ProcessInfo.processInfo.systemUptime * 1000)
+    if let c = ffmZCache, now - c.ms < 100 { return c.ids }
+    let ids = await ffmQueryZOrder()
+    ffmZCache = (now, ids)
+    return ids
+}
+
+@concurrent
+private nonisolated func ffmQueryZOrder() async -> [UInt32] {
+    let raw = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+    return raw.compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value }
 }
