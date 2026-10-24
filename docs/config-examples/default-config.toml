@@ -65,6 +65,8 @@ focus-follows-mouse.mode = 'off'
 focus-follows-mouse.delay-ms = 0
 # Bundle ids that always use 'raise' (e.g. apps that ignore no-raise focus)
 focus-follows-mouse.raise-apps = []
+# Diagnostics: append one line per focus decision to ~/Library/Logs/AeroSpace/ffm.log
+focus-follows-mouse.debug-log = false
 
 # Possible values: (qwerty|dvorak|colemak)
 # See https://nikitabobko.github.io/AeroSpace/guide#key-mapping

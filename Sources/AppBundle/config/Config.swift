@@ -79,6 +79,8 @@ struct FocusFollowsMouse: ConvenienceMutable {
     var delayMs: Int = 0
     /// Bundle ids that always get the raising variant even in no-raise mode
     var raiseApps: [String] = []
+    /// Append one line per focus decision to ~/Library/Logs/AeroSpace/ffm.log (diagnostics, capped at 1 MB)
+    var debugLog: Bool = false
 
     var effectiveMode: FocusFollowsMouseMode { mode ?? (enabled ? .raise : .off) }
 }

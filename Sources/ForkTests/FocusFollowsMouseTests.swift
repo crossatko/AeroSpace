@@ -181,6 +181,12 @@ private struct Driver {
 
 @MainActor
 @Suite struct FocusFollowsMouseConfigTests {
+    @Test func debugLog() {
+        #expect(!parseConfig("config-version = 2\n").config.focusFollowsMouse.debugLog)
+        let r = parseConfig("config-version = 2\nfocus-follows-mouse.debug-log = true")
+        #expect(r.errors.isEmpty && r.config.focusFollowsMouse.debugLog)
+    }
+
     @Test func modes() {
         func mode(_ toml: String) -> (FocusFollowsMouse, Int) {
             let r = parseConfig("config-version = 2\n" + toml)

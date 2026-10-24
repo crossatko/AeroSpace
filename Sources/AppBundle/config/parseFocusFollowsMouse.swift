@@ -3,6 +3,7 @@ private let focusFollowsMouseParserTable: [String: any ParserProtocol<FocusFollo
     "mode": Parser(\.mode, parseFocusFollowsMouseMode),
     "delay-ms": Parser(\.delayMs, parseFocusFollowsMouseDelay),
     "raise-apps": Parser(\.raiseApps, parseRaiseApps),
+    "debug-log": Parser(\.debugLog, parseBool),
 ]
 
 func parseFocusFollowsMouse(_ rawConfig: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> FocusFollowsMouse {
