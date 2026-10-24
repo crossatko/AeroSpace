@@ -180,20 +180,23 @@ private struct Driver {
 
     @Test func axElementVeto() {
         let target = CGRect(x: 100, y: 100, width: 700, height: 600)
+        let inside = CGPoint(x: 400, y: 300)
         func el(_ role: String?, window: Bool, pid: Int32 = 9, frame: CGRect? = nil) -> FfmAxElementInfo {
             FfmAxElementInfo(role: role, subrole: nil, pid: pid, hasWindow: window, frame: frame)
         }
-        // Regular element with a window: no veto
-        #expect(!ffmAxElementVeto(el("AXButton", window: true), targetFrame: target))
-        // Real menus and popovers veto even with a window
-        #expect(ffmAxElementVeto(el("AXMenuItem", window: true), targetFrame: target))
-        #expect(ffmAxElementVeto(el("AXPopover", window: true), targetFrame: target))
-        // Hosted content of another process without AXWindow, inside the target frame: no veto
-        #expect(!ffmAxElementVeto(el("AXGroup", window: false, pid: 77, frame: CGRect(x: 300, y: 100, width: 500, height: 600)), targetFrame: target))
-        // No window and outside / unknown frame: veto as before (menubar dropdown etc.)
-        #expect(ffmAxElementVeto(el("AXGroup", window: false, frame: CGRect(x: 0, y: 0, width: 50, height: 400)), targetFrame: target))
-        #expect(ffmAxElementVeto(el("AXGroup", window: false), targetFrame: target))
-        #expect(ffmAxElementVeto(el("AXGroup", window: false, frame: CGRect(x: 300, y: 100, width: 500, height: 600)), targetFrame: nil))
+        func veto(_ e: FfmAxElementInfo, at p: CGPoint? = nil, _ t: CGRect? = target) -> Bool { ffmAxElementVeto(e, cursor: p ?? inside, targetFrame: t) }
+        #expect(!veto(el("AXButton", window: true)))
+        #expect(veto(el("AXMenuItem", window: true)))
+        #expect(veto(el("AXPopover", window: false, frame: target)))
+        // Oversized hosted scroll group of another process, no AXWindow: no veto
+        #expect(!veto(el("AXGroup", window: false, pid: 77, frame: CGRect(x: 300, y: -500, width: 460, height: 1214))))
+        // Transient role still vetoes even when hosted-looking
+        #expect(veto(el("AXMenu", window: false, pid: 77, frame: target)))
+        // Cursor outside the target frame, element elsewhere, or unknown frames: veto
+        #expect(veto(el("AXGroup", window: false, frame: target), at: CGPoint(x: 5, y: 5)))
+        #expect(veto(el("AXGroup", window: false, frame: CGRect(x: 0, y: 0, width: 50, height: 50))))
+        #expect(veto(el("AXGroup", window: false)))
+        #expect(veto(el("AXGroup", window: false, frame: target), at: nil, nil))
     }
 
     @Test func managedTiledWindowAboveFloatingTargetDoesNotVeto() {
