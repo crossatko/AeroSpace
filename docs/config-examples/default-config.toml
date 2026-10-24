@@ -26,11 +26,12 @@ menu-bar-scroll-switch = false
 # Maximum width of the clickable item in points, 0 = auto (40% of the screen, less the notch)
 menu-bar-max-width = 0
 
-# Where windows of inactive workspaces are parked. Possible values: corner|directional
+# Where windows of inactive workspaces are parked. Possible values: corner|directional|directional-corner
 # 'corner' puts them all in one screen corner. 'directional' puts workspaces before the visible one
-# beyond the left edge and later ones beyond the right edge, so mission control shows them spatially
+# beyond the left edge and later ones beyond the right edge, so mission control shows them spatially.
+# 'directional-corner' parks those at the bottom corners, so only a corner pixel stays visible
 hidden-window-placement = 'corner'
-# Visible part of parked windows in points: an integer or a string like '0.5' (one Retina pixel). 0 may make macOS lose the window
+# Visible part of parked windows in points (integer; fractions don't work, macOS pulls them back ~40 pt; 0 untested)
 hidden-window-sliver = 1
 
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
