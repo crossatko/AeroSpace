@@ -5,10 +5,15 @@ import Common
 enum HiddenWindowPlacement: String, CaseIterable {
     /// Upstream behaviour: every hidden window goes to the same screen corner
     case corner
-    /// Hidden windows go beyond the left edge (lower workspaces) or the right edge (higher workspaces)
+    /// Hidden windows go beyond the right edge (lower workspaces) or the left edge (higher workspaces), see `missionControlMirrorsParkedPositions`
     /// of the monitor, so Mission Control arranges workspaces spatially
     case directional
 }
+
+/// Mission Control mirrors parked positions horizontally (observed on macOS 26.6: windows parked beyond the left edge
+/// show up on its right side and vice versa). So lower workspaces are parked on the right, higher ones on the left.
+/// The vertical band order (nearest workspace on top) is unverified in Mission Control.
+let missionControlMirrorsParkedPositions = true
 
 enum HiddenEdge: Equatable {
     case left, right, bottom
@@ -55,10 +60,11 @@ func hiddenSlots(workspaces: [String], visible: String, geometry: HiddenMonitorG
     let higher = Array(workspaces[(visibleIndex + 1)...])
     var result: [String: HiddenSlot] = [:]
     for (names, isLower) in [(lower, true), (higher, false)] {
-        let preferredBlocked = isLower ? geometry.leftBlocked : geometry.rightBlocked
+        let useRight = isLower == missionControlMirrorsParkedPositions
+        let preferredBlocked = useRight ? geometry.rightBlocked : geometry.leftBlocked
         let edge: HiddenEdge
         if !preferredBlocked {
-            edge = isLower ? .left : .right
+            edge = useRight ? .right : .left
         } else if !geometry.bottomBlocked {
             edge = .bottom
         } else {
@@ -88,10 +94,11 @@ func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth
             let x = slot.edge == .left ? r.minX + sliver - windowWidth : r.maxX - sliver
             return CGPoint(x: x, y: min(y, r.maxY - 1))
         case .bottom:
-            // Lower workspaces in the left half, higher in the right half; the nearest one is next to the middle
+            // Mission Control mirrors: lower workspaces in the right half, higher in the left half; the nearest one is next to the middle
             let half = r.width / 2
-            let index = slot.isLowerSide ? slot.bandCount - 1 - slot.band : slot.band
-            let start = slot.isLowerSide ? r.minX : r.minX + half
+            let inRightHalf = slot.isLowerSide == missionControlMirrorsParkedPositions
+            let index = inRightHalf ? slot.band : slot.bandCount - 1 - slot.band
+            let start = inRightHalf ? r.minX + half : r.minX
             let x = start + half * (CGFloat(index) + unit(relative.x)) / n
             return CGPoint(x: min(x, r.maxX - 1), y: r.maxY - sliver)
     }
