@@ -201,12 +201,21 @@ func ffmUnmanagedFrontVeto(focusedWindowId: UInt32?, isManaged: (UInt32) -> Bool
     return !isManaged(id)
 }
 
-/// Raise policy of no-raise mode. Floating targets always raise (they overlap, MRU order must match stacking order),
-/// explicit raise-apps raise. A tiled target never raises: not when SkyLight is unavailable and not when no-raise
-/// failed to verify for the app (both are only logged).
+/// Raise policy of no-raise mode: only explicit raise-apps raise. Neither tiled nor floating targets do (a hovered
+/// floating window must not come over the previously focused one), not when SkyLight is unavailable and not when
+/// no-raise failed to verify for the app (both are only logged).
 func ffmShouldRaise(hit: FfmHit, inRaiseApps: Bool) -> Bool {
-    if case .floating = hit { return true }
-    return inRaiseApps
+    inRaiseApps
+}
+
+/// Orders floating candidates by the real window server stacking (front to back). Ids missing from the z-order go
+/// last, keeping their relative (MRU) order. Floating windows no longer raise on hover, so MRU order cannot be trusted.
+func ffmOrderFloatingByZ(_ candidates: [FfmFloating], zOrderFrontToBack: [UInt32]) -> [FfmFloating] {
+    let rank = Dictionary(zOrderFrontToBack.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+    return candidates.enumerated().sorted { a, b in
+        let ra = rank[a.element.windowId] ?? Int.max, rb = rank[b.element.windowId] ?? Int.max
+        return ra != rb ? ra < rb : a.offset < b.offset
+    }.map(\.element)
 }
 
 

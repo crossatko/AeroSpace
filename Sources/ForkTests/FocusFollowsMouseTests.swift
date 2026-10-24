@@ -123,6 +123,19 @@ private struct Driver {
         #expect(d.focusCalls.isEmpty)
     }
 
+    @Test func floatingOrderedByRealStacking() {
+        let f1 = FfmFloating(windowId: 10, rect: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let f2 = FfmFloating(windowId: 11, rect: CGRect(x: 100, y: 100, width: 200, height: 200))
+        let f3 = FfmFloating(windowId: 12, rect: CGRect(x: 0, y: 0, width: 50, height: 50))
+        // MRU says f2 first, but the window server has f1 in front
+        #expect(ffmOrderFloatingByZ([f2, f1], zOrderFrontToBack: [99, 10, 11]).map(\.windowId) == [10, 11])
+        let tile = CGRect(x: 0, y: 0, width: 495, height: 400)
+        let ordered = ffmOrderFloatingByZ([f2, f1], zOrderFrontToBack: [10, 11])
+        #expect(ffmHitTest(CGPoint(x: 150, y: 150), floatingTopFirst: ordered, tilingId: 1, tilingRect: tile) == .floating(10))
+        // Unknown ids go last, keeping MRU order
+        #expect(ffmOrderFloatingByZ([f3, f2, f1], zOrderFrontToBack: [10]).map(\.windowId) == [10, 12, 11])
+    }
+
     @Test func hitTestFloatingOrderAndGaps() {
         let f1 = FfmFloating(windowId: 10, rect: CGRect(x: 0, y: 0, width: 200, height: 200))
         let f2 = FfmFloating(windowId: 11, rect: CGRect(x: 100, y: 100, width: 200, height: 200))
@@ -242,6 +255,7 @@ private struct Driver {
 
 @Test func noRaiseModeNeverRaisesTiledWindows() {
     #expect(ffmShouldRaise(hit: .tiling(1), inRaiseApps: false) == false)
-    #expect(ffmShouldRaise(hit: .floating(1), inRaiseApps: false) == true)
+    #expect(ffmShouldRaise(hit: .floating(1), inRaiseApps: false) == false)
+    #expect(ffmShouldRaise(hit: .floating(1), inRaiseApps: true) == true)
     #expect(ffmShouldRaise(hit: .tiling(1), inRaiseApps: true) == true) // explicit raise-apps opt-in
 }
