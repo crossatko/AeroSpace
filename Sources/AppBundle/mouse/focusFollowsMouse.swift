@@ -9,6 +9,7 @@ import Common
 @MainActor private var focusFollowsTask: Task<(), any Error>? = nil
 @MainActor private var focusFollowsTimer: Task<(), any Error>? = nil
 @MainActor private var ffmDebugLogEnabled = false
+@MainActor private var lastHitRect: CGRect? = nil
 @MainActor private var lastLoggedHit: FfmHit? = nil
 @MainActor private var ffmState = FfmState()
 /// Apps for which no-raise did not verify: they use raise from now on (until AeroSpace restarts)
@@ -69,12 +70,20 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
                     // Menus/popups are vetoed via AX, but only when we are about to act (AX is slow)
                     if ffmState.wouldAct(hit, focusedId: focusedId, nowMs: now) {
                         // Ignores macOS menubar dropdown, but not non-native menu-like fake windows
-                        if await isAxWindowUnderMouse(location) == false { return }
+                        if let ax = await axElementUnderMouse(location), ffmAxElementVeto(ax, targetFrame: lastHitRect) {
+                            if ffmDebugLogEnabled {
+                                ffmLog("DROP reason=ax-popup cursor=\(ffmPt(location)) target=\(hit.windowId.map(String.init) ?? "none") role=\(ax.role ?? "?") subrole=\(ax.subrole ?? "?") pid=\(ax.pid) owner=\(ffmOwnerName(pid: ax.pid)) hasWindow=\(ax.hasWindow) frame=\(ax.frame.map(ffmRect) ?? "?") targetFrame=\(lastHitRect.map(ffmRect) ?? "?")")
+                            }
+                            return
+                        }
                         try checkCancellation()
                         vetoed = await ffmVetoed(location, hit, now)
                         try checkCancellation()
                     }
                     let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId, vetoed: vetoed), nowMs: now)
+                    if ffmDebugLogEnabled, let reason = ffmState.lastDropReason, hit.windowId != nil {
+                        ffmLog("DROP reason=\(reason) cursor=\(ffmPt(location)) target=\(hit.windowId.map(String.init) ?? "none") focused=\(focusedId.map(String.init) ?? "none")")
+                    }
                     if ffmDebugLogEnabled { ffmLogDecision(location, hit, focusedId, decision, vetoed) }
                     applyDecision(decision, token: token)
                 }
@@ -159,6 +168,11 @@ private nonisolated func noRaiseFocusAndVerify(pid: pid_t, windowId: UInt32) asy
     let r = tiling?.lastAppliedLayoutPhysicalRect
     let tilingRect = r.map { CGRect(x: $0.topLeftX, y: $0.topLeftY, width: $0.width, height: $0.height) }
     let result = ffmHitTest(location, floatingTopFirst: floating, tilingId: tiling?.windowId, tilingRect: tilingRect)
+    switch result {
+        case .floating(let id): lastHitRect = floating.first { $0.windowId == id }?.rect
+        case .tiling: lastHitRect = tilingRect
+        case .none: lastHitRect = nil
+    }
     if ffmDebugLogEnabled, result != lastLoggedHit {
         lastLoggedHit = result
         let cands = floating.map { "\($0.windowId)@\(ffmRect($0.rect))" }.joined(separator: ",")
@@ -168,14 +182,22 @@ private nonisolated func noRaiseFocusAndVerify(pid: pid_t, windowId: UInt32) asy
 }
 
 @concurrent
-private nonisolated func isAxWindowUnderMouse(_ location: CGPoint) async -> Bool? {
+private nonisolated func axElementUnderMouse(_ location: CGPoint) async -> FfmAxElementInfo? {
     let systemwide = AXUIElementCreateSystemWide()
     var element: AXUIElement?
     if unsafe AXUIElementCopyElementAtPosition(systemwide, Float(location.x), Float(location.y), &element) != .success {
         return nil
     }
     guard let element else { return nil }
-    return element.get(Ax.parentWindowRecursive) != nil || element.get(Ax.roleAttr) == kAXWindowRole
+    var pid: pid_t = 0
+    unsafe _ = AXUIElementGetPid(element, &pid)
+    let role = element.get(Ax.roleAttr)
+    var frame: CGRect? = nil
+    if let p = element.get(Ax.topLeftCornerAttr), let sz = element.get(Ax.sizeAttr) { frame = CGRect(origin: p, size: sz) }
+    return FfmAxElementInfo(
+        role: role, subrole: element.get(Ax.subroleAttr), pid: pid,
+        hasWindow: element.get(Ax.parentWindowRecursive) != nil || role == kAXWindowRole, frame: frame,
+    )
 }
 
 /// Veto checks, run only when a focus change is about to happen (once per real target change; at most every 100 ms

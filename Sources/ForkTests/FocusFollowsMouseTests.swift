@@ -178,6 +178,24 @@ private struct Driver {
         #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(30, pid: 4, layer: 20)] + wins, ownPid: 7))
     }
 
+    @Test func axElementVeto() {
+        let target = CGRect(x: 100, y: 100, width: 700, height: 600)
+        func el(_ role: String?, window: Bool, pid: Int32 = 9, frame: CGRect? = nil) -> FfmAxElementInfo {
+            FfmAxElementInfo(role: role, subrole: nil, pid: pid, hasWindow: window, frame: frame)
+        }
+        // Regular element with a window: no veto
+        #expect(!ffmAxElementVeto(el("AXButton", window: true), targetFrame: target))
+        // Real menus and popovers veto even with a window
+        #expect(ffmAxElementVeto(el("AXMenuItem", window: true), targetFrame: target))
+        #expect(ffmAxElementVeto(el("AXPopover", window: true), targetFrame: target))
+        // Hosted content of another process without AXWindow, inside the target frame: no veto
+        #expect(!ffmAxElementVeto(el("AXGroup", window: false, pid: 77, frame: CGRect(x: 300, y: 100, width: 500, height: 600)), targetFrame: target))
+        // No window and outside / unknown frame: veto as before (menubar dropdown etc.)
+        #expect(ffmAxElementVeto(el("AXGroup", window: false, frame: CGRect(x: 0, y: 0, width: 50, height: 400)), targetFrame: target))
+        #expect(ffmAxElementVeto(el("AXGroup", window: false), targetFrame: target))
+        #expect(ffmAxElementVeto(el("AXGroup", window: false, frame: CGRect(x: 300, y: 100, width: 500, height: 600)), targetFrame: nil))
+    }
+
     @Test func managedTiledWindowAboveFloatingTargetDoesNotVeto() {
         let p = CGPoint(x: 100, y: 100)
         let target = w(5, pid: 1)
