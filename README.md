@@ -19,7 +19,7 @@ This is a personal fork of [nikitabobko/AeroSpace](https://github.com/nikitabobk
 It is **not affiliated with upstream**, it is **experimental**, and it has only been built and tested on **macOS 26.6 (arm64)**.
 Use upstream if you want a supported release.
 
-Layout of the repository: `main` is a plain mirror of upstream, every feature lives on its own `feat/*` branch (to keep rebasing onto upstream cheap), and `fork` (this branch) is the integration of all of them.
+Layout of the repository: `main` (this branch) integrates all features of the fork, every feature also lives on its own `feat/*` branch based on upstream (to keep rebasing onto upstream cheap), and upstream itself is tracked as a remote (`git remote add upstream https://github.com/nikitabobko/AeroSpace`), not as a branch here.
 The upstream README follows below, unchanged.
 
 Everything below is off by default; with the default config the behaviour is upstream's.
