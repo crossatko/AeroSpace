@@ -12,6 +12,8 @@ import Common
 /// Apps for which no-raise did not verify: they use raise from now on (until AeroSpace restarts)
 @MainActor private var noRaiseFailedApps: Set<String> = []
 @MainActor private var noRaiseUnavailableLogged = false
+/// Last positive veto (target id, time): re-used for 100 ms so a panel left open costs one probe per 100 ms, not per move
+@MainActor private var lastVeto: (id: UInt32, ms: Int)? = nil
 
 private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
     .mouseMoved, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp,
@@ -60,13 +62,16 @@ private let ffmMonitoredEvents: NSEvent.EventTypeMask = [
                     try checkCancellation()
                     let focusedId = focus.windowOrNil?.windowId
                     let now = Int(ProcessInfo.processInfo.systemUptime * 1000)
+                    var vetoed = false
                     // Menus/popups are vetoed via AX, but only when we are about to act (AX is slow)
                     if ffmState.wouldAct(hit, focusedId: focusedId, nowMs: now) {
                         // Ignores macOS menubar dropdown, but not non-native menu-like fake windows
                         if await isAxWindowUnderMouse(location) == false { return }
                         try checkCancellation()
+                        vetoed = await ffmVetoed(location, hit, now)
+                        try checkCancellation()
                     }
-                    let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId), nowMs: now)
+                    let decision = ffmState.feed(.mouseMoved(location, hit: hit, focusedId: focusedId, vetoed: vetoed), nowMs: now)
                     applyDecision(decision, token: token)
                 }
         }
@@ -168,4 +173,56 @@ private nonisolated func isAxWindowUnderMouse(_ location: CGPoint) async -> Bool
     }
     guard let element else { return nil }
     return element.get(Ax.parentWindowRecursive) != nil || element.get(Ax.roleAttr) == kAXWindowRole
+}
+
+/// Veto checks, run only when a focus change is about to happen (once per real target change; at most every 100 ms
+/// while a veto holds). Both only ever veto, the target always comes from AeroSpace's layout.
+///  1. An unmanaged window has focus (Raycast/Spotlight panel, dialog, password popup): pause.
+///  2. The window server's topmost relevant window at the cursor is not the target (overlay, panel, Mission Control).
+@MainActor private func ffmVetoed(_ location: CGPoint, _ hit: FfmHit, _ nowMs: Int) async -> Bool {
+    guard let targetId = hit.windowId, let target = Window.get(byId: targetId) as? MacWindow else { return false }
+    if let v = lastVeto, v.id == targetId, nowMs - v.ms < 100 { return true }
+    let targetPid = target.macApp.nsApp.processIdentifier
+    let probe = await ffmProbe(location)
+    let vetoed = ffmUnmanagedFrontVeto(focusedWindowId: probe.focusedWindowId) { Window.get(byId: $0) != nil }
+        || ffmTopmostVeto(location, targetId: targetId, targetPid: targetPid, windowsFrontToBack: probe.windows, ownPid: ProcessInfo.processInfo.processIdentifier)
+    lastVeto = vetoed ? (targetId, nowMs) : nil
+    return vetoed
+}
+
+private struct FfmProbe: Sendable {
+    let focusedWindowId: UInt32?
+    let windows: [FfmWindowInfo]
+}
+
+@concurrent
+private nonisolated func ffmProbe(_ location: CGPoint) async -> FfmProbe {
+    // Focused window of the system-wide focused app (also right for non-activating panels such as Raycast)
+    var focusedId: UInt32? = nil
+    let systemwide = AXUIElementCreateSystemWide()
+    var app: CFTypeRef?
+    if unsafe AXUIElementCopyAttributeValue(systemwide, kAXFocusedApplicationAttribute as CFString, &app) == .success,
+       let app, CFGetTypeID(app) == AXUIElementGetTypeID()
+    {
+        var pid: pid_t = 0
+        if unsafe AXUIElementGetPid(app as! AXUIElement, &pid) == .success {
+            focusedId = axFocusedWindowId(pid: pid)
+        }
+    }
+    var windows: [FfmWindowInfo] = []
+    let raw = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? [] // front to back
+    for w in raw {
+        var rect = CGRect.zero
+        guard let b = w[kCGWindowBounds as String] as! CFDictionary?, CGRectMakeWithDictionaryRepresentation(b, &rect),
+              rect.contains(location) // only windows under the cursor matter
+        else { continue }
+        windows.append(FfmWindowInfo(
+            id: (w[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0,
+            pid: (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0,
+            layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0,
+            alpha: (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1,
+            bounds: rect,
+        ))
+    }
+    return FfmProbe(focusedWindowId: focusedId, windows: windows)
 }

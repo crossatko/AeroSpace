@@ -40,7 +40,8 @@ func ffmHitTest(_ point: CGPoint, floatingTopFirst: [FfmFloating], tilingId: UIn
 }
 
 enum FfmInput {
-    case mouseMoved(CGPoint, hit: FfmHit, focusedId: UInt32?)
+    /// `vetoed`: the glue found a reason not to change focus now (unmanaged front window, other window on top, menu...)
+    case mouseMoved(CGPoint, hit: FfmHit, focusedId: UInt32?, vetoed: Bool = false)
     case mouseDown
     case mouseUp
     /// The dwell timer for `windowId` elapsed (only with delay-ms > 0)
@@ -99,8 +100,8 @@ struct FfmState {
                 lastTarget = id
                 lastSeenFocused = .some(id)
                 return .focus(p)
-            case .mouseMoved(let point, let hit, let focusedId):
-                return move(point, hit, focusedId, nowMs)
+            case .mouseMoved(let point, let hit, let focusedId, let vetoed):
+                return move(point, hit, focusedId, vetoed, nowMs)
         }
     }
 
@@ -115,7 +116,7 @@ struct FfmState {
         return pending == nil ? .none : .cancelPending
     }
 
-    private mutating func move(_ point: CGPoint, _ hit: FfmHit, _ focusedId: UInt32?, _ nowMs: Int) -> FfmDecision {
+    private mutating func move(_ point: CGPoint, _ hit: FfmHit, _ focusedId: UInt32?, _ vetoed: Bool, _ nowMs: Int) -> FfmDecision {
         defer { lastPoint = point }
         // Foreign focus change (keyboard, workspace switch, click): wait for real movement
         if let seen = lastSeenFocused, seen != focusedId {
@@ -134,7 +135,7 @@ struct FfmState {
             lastTarget = id
             return dropPending()
         }
-        if isBlocked(nowMs: nowMs) { return dropPending() }
+        if vetoed || isBlocked(nowMs: nowMs) { return dropPending() }
         if pending?.windowId == id { return .none }
         pending = nil
         if delayMs > 0 {
@@ -146,4 +147,42 @@ struct FfmState {
         lastSeenFocused = .some(id) // our own change is not a foreign one
         return .focus(hit)
     }
+}
+
+// MARK: vetoes (only ever veto a target chosen from AeroSpace's layout; they never pick one)
+
+struct FfmWindowInfo: Equatable {
+    let id: UInt32
+    let pid: Int32
+    let layer: Int
+    let alpha: Double
+    let bounds: CGRect
+}
+
+/// Layers that count as "something covers the cursor". Measured on macOS 26: normal windows 0, Dock/Mission Control
+/// and floating/modal/status panels (Spotlight, Raycast, 1Password) 1...23, menubar "Window Server" 24 and status
+/// items 25 (the menu bar is outside every tile anyway, so they are skipped), screen-saver/overlay levels above.
+/// Negative layers are the always-present desktop plumbing (wallpaper, event shield, backstops) and never count.
+func ffmLayerCounts(_ layer: Int) -> Bool {
+    (0 ... 23).contains(layer) || layer > 25
+}
+
+/// True if a window that is not the target covers the cursor. `windowsFrontToBack` is the window server order.
+/// Windows with alpha ~0 and AeroSpace's own windows are ignored. Another layer-0 window of the target's own app
+/// does not veto (apps keep invisible twin windows, e.g. browser tab groups, with identical frames).
+func ffmTopmostVeto(_ point: CGPoint, targetId: UInt32, targetPid: Int32, windowsFrontToBack: [FfmWindowInfo], ownPid: Int32) -> Bool {
+    for w in windowsFrontToBack {
+        guard ffmLayerCounts(w.layer), w.alpha > 0.01, w.pid != ownPid, w.bounds.contains(point) else { continue }
+        if w.id == targetId { return false }
+        if w.pid == targetPid && w.layer == 0 { return false }
+        return true
+    }
+    return false
+}
+
+/// True if the focused window of the focused app exists but AeroSpace does not manage it (launcher panel, dialog,
+/// password popup). A missing focused window (app without windows) does not veto.
+func ffmUnmanagedFrontVeto(focusedWindowId: UInt32?, isManaged: (UInt32) -> Bool) -> Bool {
+    guard let id = focusedWindowId else { return false }
+    return !isManaged(id)
 }
