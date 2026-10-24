@@ -106,7 +106,7 @@ Upstream's release build needs Xcode. This fork also builds with the SwiftPM too
    security find-identity -v -p codesigning    # must list the identity
    rm -rf $d
    ```
-3. `script/build-local-app.sh` does a SwiftPM release build for the host architecture, assembles `AeroSpace.app` by hand (Info.plist, entitlements, an icon made with `iconutil`, the CLI embedded in `Contents/Resources/bin`) and signs it with that identity. The result is `.local-app/AeroSpace.app`; copy it to `/Applications`. There are no docs, man pages or shell completion in this build. Options: `--codesign-identity`, `--build-version`, `--out`.
+3. `script/build-local-app.sh` does a SwiftPM release build for the host architecture, assembles `AeroSpace.app` by hand (Info.plist, entitlements, an icon made with `iconutil`, the CLI embedded in `Contents/Resources/bin`) and signs it with that identity. The result is `.local-app/AeroSpace.app`. To install it, quit the running AeroSpace first (menu bar item > Quit, or `kill` its exact PID), replace the bundle (`rm -rf /Applications/AeroSpace.app && ditto .local-app/AeroSpace.app /Applications/AeroSpace.app`) and start it with `open -a /Applications/AeroSpace.app`. With the same signing identity the Accessibility grant carries over; otherwise macOS asks again. There are no docs, man pages or shell completion in this build. Options: `--codesign-identity`, `--build-version`, `--out`.
 
 Tests: upstream's XCTest-based tests (`AppBundleTests`) need Xcode. The fork's own logic is covered by a [Swift Testing](https://github.com/swiftlang/swift-testing) target, `ForkTests`, which runs without XCTest:
 
