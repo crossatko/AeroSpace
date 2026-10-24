@@ -557,6 +557,12 @@ defaults write com.apple.dock expose-group-apps -bool true && killall Dock
 ----
 (or in System Settings: `System Settings -> Desktop & Dock -> Group windows by application`). For whatever weird reason, it helps.
 
+Fork experiment: `hidden-window-placement = 'directional'` parks windows of inactive workspaces beyond the left edge of the monitor (workspaces before the visible one) or beyond the right edge (workspaces after it), instead of all in one corner.
+Several hidden workspaces on one side get vertical bands, the nearest workspace on top, and windows keep their relative layout inside the band.
+So when workspace 4 is visible, mission control shows workspace 3 on the left and workspaces 5+ on the right.
+If an edge touches another monitor, the bottom edge is used for that side (lower workspaces on the left half, higher on the right), and if that is blocked too, the usual corner.
+The default `'corner'` is the upstream behaviour.
+
 [#a-note-on-displays-have-separate-spaces]
 === A note on '`Displays have separate Spaces`'
 

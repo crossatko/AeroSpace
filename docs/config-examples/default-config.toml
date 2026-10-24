@@ -26,6 +26,11 @@ menu-bar-scroll-switch = false
 # Maximum width of the clickable item in points, 0 = auto (40% of the screen, less the notch)
 menu-bar-max-width = 0
 
+# Where windows of inactive workspaces are parked. Possible values: corner|directional
+# 'corner' puts them all in one screen corner. 'directional' puts workspaces before the visible one
+# beyond the left edge and later ones beyond the right edge, so mission control shows them spatially
+hidden-window-placement = 'corner'
+
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true
