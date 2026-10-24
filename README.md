@@ -71,10 +71,11 @@ focus-follows-mouse.debug-log = false   # decisions -> ~/Library/Logs/AeroSpace/
 # shorthand: focus-follows-mouse = 'no-raise'
 ```
 
-**Clickable menu bar workspaces.** A second menu bar item shows the occupied, visible and focused workspaces as pills; click focuses a workspace, right click or Option-click opens a menu.
+**Clickable menu bar workspaces.** The menu bar item shows the occupied, visible and focused workspaces as pills; click focuses a workspace, right click or Option-click opens a menu (workspaces, Enable/Disable, Open config, Reload config, Quit). The stock item is hidden while the pills are shown and comes back automatically if they are not (no Accessibility permission, AeroSpace disabled, install failure).
 
 ```toml
 menu-bar-clickable = true
+menu-bar-hide-stock-item = true  # false = keep the stock item as well
 menu-bar-scroll-switch = true    # scroll over it = previous/next non-empty workspace
 menu-bar-max-width = 0           # points, 0 = auto
 ```
