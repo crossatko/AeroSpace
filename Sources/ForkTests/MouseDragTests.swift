@@ -71,13 +71,6 @@ import Testing
         #expect(isDeepInside(CGPoint(x: 20, y: 20), CGRect(x: 0, y: 0, width: 40, height: 40)))
     }
 
-    @Test func relayoutOnlyOnTargetChange() {
-        #expect(dragTargetChanged(previous: nil, new: 1))
-        #expect(!dragTargetChanged(previous: 1, new: 1))
-        #expect(dragTargetChanged(previous: 1, new: 2))
-        #expect(!dragTargetChanged(previous: 1, new: nil))
-    }
-
     @Test func previewFrameFlipsYAndInsets() {
         let f = dropPreviewFrame(of: CGRect(x: 100, y: 50, width: 400, height: 300), primaryScreenHeight: 1000)
         #expect(f == CGRect(x: 104, y: 654, width: 392, height: 292))
@@ -125,11 +118,34 @@ import Testing
         #expect(dropZoneRect(of: rect, zone: .bottom) == CGRect(x: 100, y: 200, width: 400, height: 100))
     }
 
-    @Test func zoneChangeRelaysOut() {
-        let a = DropTarget(windowId: 1, zone: .top), b = DropTarget(windowId: 1, zone: .bottom)
-        #expect(dragTargetChanged(previous: a, new: b))
-        #expect(!dragTargetChanged(previous: a, new: a))
-        #expect(dragTargetChanged(previous: nil, new: a))
+    @Test func moveSamplesNeverTouchTheTree_targetFromUnchangedLayout() {
+        let tile = CGRect(x: 100, y: 100, width: 400, height: 200)
+        // lower part of another tile: preview = bottom half of that tile as it is on screen
+        let low = dropTargetUpdate(hit: (7, tile), point: CGPoint(x: 300, y: 270), previous: nil)
+        #expect(low == .set(DropTarget(windowId: 7, zone: .bottom), previewRect: CGRect(x: 100, y: 200, width: 400, height: 100)))
+        // swap zone: whole tile
+        let mid = dropTargetUpdate(hit: (7, tile), point: CGPoint(x: 300, y: 200), previous: nil)
+        #expect(mid == .set(DropTarget(windowId: 7, zone: .center), previewRect: tile))
+    }
+
+    @Test func ownSlotOrNoTileResetsBorderKeeps() {
+        let tile = CGRect(x: 100, y: 100, width: 400, height: 200)
+        let prev = DropTarget(windowId: 7, zone: .top)
+        #expect(dropTargetUpdate(hit: nil, point: CGPoint(x: 300, y: 200), previous: prev) == .reset)
+        #expect(dropTargetUpdate(hit: (7, tile), point: CGPoint(x: 102, y: 200), previous: prev) == .keep)
+    }
+
+    @Test func zoneHysteresisCarriesOverSamplesOfTheSameTile() {
+        let tile = CGRect(x: 100, y: 100, width: 400, height: 200)
+        let p = CGPoint(x: 300 + 0.7 * 200, y: 200 + 0.7 * 100) // on the diagonal, inside the margin
+        guard case .set(let t, _) = dropTargetUpdate(hit: (7, tile), point: p, previous: DropTarget(windowId: 7, zone: .right)) else {
+            Issue.record("expected a target"); return
+        }
+        #expect(t.zone == .right)
+        guard case .set(let u, _) = dropTargetUpdate(hit: (8, tile), point: p, previous: DropTarget(windowId: 7, zone: .right)) else {
+            Issue.record("expected a target"); return
+        }
+        #expect(u.windowId == 8) // another tile: no hysteresis from the old one
     }
 
     @Test func placementDecision() {

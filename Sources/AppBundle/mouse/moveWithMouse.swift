@@ -74,12 +74,20 @@ func moveTilingWindow(_ window: Window) {
     }
 }
 
-/// Drop zone move: the window goes next to `target` (above / below / left / right of it) by
+/// Drop of a tile move at mouse up: swap for the centre zone, otherwise the window goes next to `target` (above / below / left / right of it) by
 /// splitting the target's slot, see `dropPlacement`. The window may come from another workspace.
 @MainActor
 func dropTilingWindow(_ window: Window, on target: Window, zone: DropZone) {
     currentlyManipulatedWithMouseWindowId = window.windowId
     window.lastAppliedLayoutPhysicalRect = nil
+    if zone == .center {
+        if window.nodeWorkspace == target.nodeWorkspace {
+            swapWindows(mruDominant: window, target)
+        } else if let parent = target.parent as? TilingContainer {
+            window.bind(to: parent, adaptiveWeight: WEIGHT_AUTO, index: target.ownIndex.orDie() + 1)
+        }
+        return
+    }
     dropTilingNode(window, on: target, zone: zone)
 }
 
