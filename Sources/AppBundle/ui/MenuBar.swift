@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it be converted to "SwiftUI struct"?
-    MenuBarExtra {
+    MenuBarExtra(isInserted: Binding(get: { shouldInsertStockMenuBarItem(viewModel) }, set: { _ in })) {
         let shortIdentification = "\(aeroSpaceAppName) v\(aeroSpaceAppVersion) \(gitShortHash)"
         let identification      = "\(aeroSpaceAppName) v\(aeroSpaceAppVersion) \(gitHash)"
         Text(shortIdentification)
@@ -49,14 +49,7 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
                 Text(viewModel.sponsorshipMessage)
             }
             Divider()
-            Button(viewModel.isEnabled ? "Disable" : "Enable") {
-                Task.startUnstructured {
-                    try await runLightSession(.menuBarButton, .forceRun) {
-                        _ = await EnableCommand(args: EnableCmdArgs(rawArgs: [], targetState: .toggle))
-                            .run(.defaultEnv, .emptyStdin)
-                    }
-                }
-            }.keyboardShortcut("E", modifiers: .command)
+            Button(viewModel.isEnabled ? "Disable" : "Enable") { toggleEnabledFromMenu() }.keyboardShortcut("E", modifiers: .command)
             getExperimentalUISettingsMenu(viewModel: viewModel)
             openConfigButton()
             reloadConfigButton(warningsAsErrors: false)
@@ -65,12 +58,7 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
                 viewModel.axPermissionStatus = .waitingWithPrompt
             }
         }
-        Button("Quit \(aeroSpaceAppName)") {
-            Task.startUnstructured {
-                terminationHandler?.beforeTermination()
-                terminateApp()
-            }
-        }.keyboardShortcut("Q", modifiers: .command)
+        Button("Quit \(aeroSpaceAppName)") { quitFromMenu() }.keyboardShortcut("Q", modifiers: .command)
     } label: {
         switch (viewModel.axPermissionStatus, viewModel.isEnabled) {
             case (.granted, true) where viewModel.menuBarClickable:
@@ -94,18 +82,7 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
 @MainActor @ViewBuilder
 func openConfigButton(showShortcutGroup: Bool = false) -> some View {
     let editor = getTextEditorToOpenConfig()
-    let button = Button("Open config in '\(editor.lastPathComponent)'") {
-        let fallbackConfig: URL = FileManager.default.homeDirectoryForCurrentUser.appending(path: configDotfileName)
-        switch findCustomConfigUrl() {
-            case .file(let url):
-                url.open(with: editor)
-            case .noCustomConfigExists:
-                _ = try? FileManager.default.copyItem(atPath: defaultConfigUrl.path, toPath: fallbackConfig.path)
-                fallbackConfig.open(with: editor)
-            case .ambiguousConfigError:
-                fallbackConfig.open(with: editor)
-        }
-    }.keyboardShortcut(",", modifiers: .command)
+    let button = Button("Open config in '\(editor.lastPathComponent)'") { openConfigInEditor() }.keyboardShortcut(",", modifiers: .command)
     switch showShortcutGroup {
         case true: shortcutGroup(label: Text("⌘ ,"), content: button)
         case false: button
@@ -115,14 +92,7 @@ func openConfigButton(showShortcutGroup: Bool = false) -> some View {
 @MainActor @ViewBuilder
 func reloadConfigButton(showShortcutGroup: Bool = false, warningsAsErrors: Bool) -> some View {
     if let token: RunSessionGuard = .isServerEnabled {
-        let button = Button("Reload config") {
-            Task.startUnstructured {
-                try await runLightSession(.menuBarButton, token) {
-                    let args: ReloadConfigCmdArgs = ReloadConfigCmdArgs(rawArgs: []).copy(\.warningsAsErrors, warningsAsErrors)
-                    _ = await reloadConfig_nonCancellable(args: args)
-                }
-            }
-        }.keyboardShortcut("R", modifiers: .command)
+        let button = Button("Reload config") { reloadConfigFromMenu(token, warningsAsErrors: warningsAsErrors) }.keyboardShortcut("R", modifiers: .command)
         switch showShortcutGroup {
             case true: shortcutGroup(label: Text("⌘ R"), content: button)
             case false: button
@@ -144,4 +114,58 @@ func getTextEditorToOpenConfig() -> URL {
     NSWorkspace.shared.urlForApplication(toOpen: findCustomConfigUrl().urlOrNil ?? defaultConfigUrl)?
         .takeIf { $0.lastPathComponent != "Xcode.app" } // Blacklist Xcode. It is too heavy to open plain text files
         ?? URL(filePath: "/System/Applications/TextEdit.app")
+}
+
+// Actions shared by the stock menu and the clickable workspace bar menu (ClickableWorkspaceBar.swift)
+
+@MainActor func openConfigInEditor() {
+    let editor = getTextEditorToOpenConfig()
+    let fallbackConfig: URL = FileManager.default.homeDirectoryForCurrentUser.appending(path: configDotfileName)
+    switch findCustomConfigUrl() {
+        case .file(let url):
+            url.open(with: editor)
+        case .noCustomConfigExists:
+            _ = try? FileManager.default.copyItem(atPath: defaultConfigUrl.path, toPath: fallbackConfig.path)
+            fallbackConfig.open(with: editor)
+        case .ambiguousConfigError:
+            fallbackConfig.open(with: editor)
+    }
+}
+
+@MainActor func reloadConfigFromMenu(_ token: RunSessionGuard, warningsAsErrors: Bool = false) {
+    Task.startUnstructured {
+        try await runLightSession(.menuBarButton, token) {
+            let args: ReloadConfigCmdArgs = ReloadConfigCmdArgs(rawArgs: []).copy(\.warningsAsErrors, warningsAsErrors)
+            _ = await reloadConfig_nonCancellable(args: args)
+        }
+    }
+}
+
+@MainActor func toggleEnabledFromMenu() {
+    Task.startUnstructured {
+        try await runLightSession(.menuBarButton, .forceRun) {
+            _ = await EnableCommand(args: EnableCmdArgs(rawArgs: [], targetState: .toggle))
+                .run(.defaultEnv, .emptyStdin)
+        }
+    }
+}
+
+@MainActor func quitFromMenu() {
+    Task.startUnstructured {
+        terminationHandler?.beforeTermination()
+        terminateApp()
+    }
+}
+
+@MainActor func shouldInsertStockMenuBarItem(_ m: TrayMenuModel) -> Bool {
+    stockMenuBarItemVisible(
+        clickable: m.menuBarClickable, hideStock: m.menuBarHideStockItem, axGranted: m.axPermissionStatus == .granted,
+        enabled: m.isEnabled, pillsInstalled: m.pillsInstalled,
+    )
+}
+
+/// The stock item is hidden only while the pills are really shown; in every other case it is the fallback
+/// (no Accessibility permission, disabled, clickable off, pill item not installed): there is always one item.
+func stockMenuBarItemVisible(clickable: Bool, hideStock: Bool, axGranted: Bool, enabled: Bool, pillsInstalled: Bool) -> Bool {
+    !(hideStock && clickable && axGranted && enabled && pillsInstalled)
 }

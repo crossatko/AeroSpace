@@ -625,11 +625,12 @@ defaults write com.apple.spaces spans-displays -bool true && killall SystemUISer
 [#clickable-menu-bar]
 == Clickable menu bar
 
-Fork feature, off by default. With `menu-bar-clickable = true` AeroSpace adds a second menu bar item next to the stock one (which shrinks to an icon) that shows the workspaces as pills.
+Fork feature, off by default. With `menu-bar-clickable = true` AeroSpace replaces the stock menu bar item with an item that shows the workspaces as pills.
+The stock item is hidden only while the pills are shown (`menu-bar-hide-stock-item = true`, the default); it comes back automatically when Accessibility permission is missing, AeroSpace is disabled, or the pill item could not be installed, so there is always one AeroSpace item in the menu bar. With `menu-bar-hide-stock-item = false` both items are shown.
 Only occupied, visible and focused workspaces are shown, grouped by monitor, in the style of the stock label (`i3 style ordered`).
 
 * Left click on a pill focuses the workspace.
-* Right click or Option-click opens a menu (all workspaces, Reload config, Quit).
+* Right click or Option-click opens a menu (all workspaces, Enable/Disable, Open config, Reload config, Quit).
 * `menu-bar-scroll-switch = true`: scrolling over the item goes to the previous/next non-empty workspace on the monitor under the cursor, once per flick, no wrap-around.
 * `menu-bar-max-width` (points, `0` = auto, 40% of the screen minus the notch): when the item is too wide, pills of non-visible workspaces are shortened to their first character, then dropped from the end. Visible and focused workspaces are always kept.
 

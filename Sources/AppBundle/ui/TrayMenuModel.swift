@@ -14,8 +14,12 @@ public final class TrayMenuModel: ObservableObject {
     @Published var experimentalUISettings: ExperimentalUISettings = ExperimentalUISettings()
     @Published var sponsorshipMessage: String = sponsorshipPrompts.randomElement().orDie()
     @Published var lastReloadConfigContainedWarnings: Bool = false
-    /// `menu-bar-clickable`: the stock label shrinks to an icon, the workspaces live in ClickableWorkspaceBar
+    /// `menu-bar-clickable`: the workspaces live in ClickableWorkspaceBar
     @Published var menuBarClickable: Bool = false
+    /// `menu-bar-hide-stock-item`: hide the stock item while the pills are shown
+    @Published var menuBarHideStockItem: Bool = true
+    /// The pill status item exists and has a button (false if installing it failed)
+    @Published var pillsInstalled: Bool = false
     @Published var axPermissionStatus: AxPermissionStatus = .waitingWithPrompt
 }
 

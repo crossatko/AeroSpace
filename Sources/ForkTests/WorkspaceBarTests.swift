@@ -159,3 +159,21 @@ private func names(_ l: WorkspaceBarLayout) -> [String] { l.pills.map { $0.item.
         #expect(l.hitTest(x: barLocalX(pointInButtonX: 34, barOriginX: 4)) == "2")
     }
 }
+
+@Suite struct StockMenuBarItemTests {
+    private func visible(clickable: Bool = true, hide: Bool = true, ax: Bool = true, enabled: Bool = true, installed: Bool = true) -> Bool {
+        stockMenuBarItemVisible(clickable: clickable, hideStock: hide, axGranted: ax, enabled: enabled, pillsInstalled: installed)
+    }
+
+    @Test func hiddenOnlyWhenPillsAreReallyShown() {
+        #expect(!visible())
+    }
+
+    @Test func shownWheneverAnythingIsMissing() {
+        #expect(visible(clickable: false))
+        #expect(visible(hide: false))
+        #expect(visible(ax: false))
+        #expect(visible(enabled: false))
+        #expect(visible(installed: false))
+    }
+}
