@@ -46,6 +46,7 @@ struct Config: ConvenienceMutable {
     var automaticallyUnhideMacosHiddenApps: Bool = false
     var accordionPadding: Int = 30
     var hiddenWindowPlacement: HiddenWindowPlacement = .corner
+    var hiddenWindowSliver: CGFloat = 1
     var enableNormalizationOppositeOrientationForNestedContainers: Bool = true
     var persistentWorkspaces: OrderedSet<String> = []
     var execOnWorkspaceChange: [String] = [] // todo deprecate

@@ -147,6 +147,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "automatically-unhide-macos-hidden-apps": Parser(\.automaticallyUnhideMacosHiddenApps, parseBool),
     "accordion-padding": Parser(\.accordionPadding, parseInt),
     "hidden-window-placement": Parser(\.hiddenWindowPlacement, parseHiddenWindowPlacement),
+    "hidden-window-sliver": Parser(\.hiddenWindowSliver, parseHiddenWindowSliver),
     persistentWorkspacesKey: Parser(\.persistentWorkspaces, parsePersistentWorkspaces),
     "exec-on-workspace-change": Parser(\.execOnWorkspaceChange, parseArrayOfStrings),
     "exec": Parser(\.execConfig, parseExecConfig),
@@ -417,6 +418,11 @@ private func parseDefaultContainerOrientation(_ raw: OrderedJson, _ backtrace: C
         DefaultContainerOrientation(rawValue: $0)
             .toResult(.init(backtrace, "Can't parse default container orientation '\($0)'"))
     }
+}
+
+private func parseHiddenWindowSliver(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<CGFloat> {
+    parseHiddenWindowSliverValue(int: raw.asIntOrNil, string: raw.asStringOrNil)
+        .toResult(.init(backtrace, "Expected a number of points between 0 and 20, as an integer or a string like '0.5'"))
 }
 
 private func parseHiddenWindowPlacement(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<HiddenWindowPlacement> {
