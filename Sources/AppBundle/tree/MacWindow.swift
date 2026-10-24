@@ -4,6 +4,9 @@ import Common
 final class MacWindow: Window {
     let macApp: MacApp
     private var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
+    // `hidden-window-placement = 'directional'`: last parked position and width, to skip redundant AX calls
+    private var lastHiddenTarget: CGPoint?
+    private var lastHiddenWidth: CGFloat?
 
     @MainActor
     private init(_ id: UInt32, _ actor: MacApp, lastFloatingSize: CGSize?, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, index: Int) {
@@ -120,8 +123,7 @@ final class MacWindow: Window {
 
     // todo it's part of the window layout and should be moved to layoutRecursive.swift
     @MainActor
-    func hideInCorner(_ corner: OptimalHideCorner) async throws {
-        guard let nodeMonitor else { return }
+    private func rememberUnhiddenPosition() async throws {
         // Don't accidentally override prevUnhiddenEmulationPosition in case of subsequent `hideInCorner` calls
         if !isHiddenInCorner {
             guard let windowRect = try await getAxRect(.cancellable) else { return }
@@ -137,6 +139,14 @@ final class MacWindow: Window {
                 }
             }
         }
+    }
+
+    @MainActor
+    func hideInCorner(_ corner: OptimalHideCorner) async throws {
+        guard nodeMonitor != nil else { return }
+        try await rememberUnhiddenPosition()
+        lastHiddenTarget = nil
+        guard let nodeMonitor else { return }
         let p: CGPoint
         switch corner {
             case .bottomLeftCorner:
@@ -152,6 +162,24 @@ final class MacWindow: Window {
                 p = nodeMonitor.visibleRect.bottomRightCorner - onePixelOffset
         }
         setAxFrame(p, nil)
+    }
+
+    /// Park the window beyond the edge of its monitor described by `slot`. No AX writes if it is already parked there
+    @MainActor
+    func hideDirectionally(_ slot: HiddenSlot, _ geometry: HiddenMonitorGeometry) async throws {
+        guard nodeMonitor != nil else { return }
+        try await rememberUnhiddenPosition()
+        if lastHiddenWidth == nil { lastHiddenWidth = try await getAxSize(.cancellable)?.width }
+        let target = hiddenTarget(
+            slot: slot,
+            geometry: geometry,
+            windowWidth: lastHiddenWidth ?? 0,
+            relative: prevUnhiddenProportionalPositionInsideWorkspaceRect ?? .zero,
+            isZoom: macApp.appId == .zoom,
+        )
+        if lastHiddenTarget == target { return }
+        lastHiddenTarget = target
+        setAxFrame(target, nil)
     }
 
     @MainActor
@@ -180,6 +208,8 @@ final class MacWindow: Window {
         }
 
         self.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
+        lastHiddenTarget = nil
+        lastHiddenWidth = nil
     }
 
     override var isHiddenInCorner: Bool {

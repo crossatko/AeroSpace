@@ -146,6 +146,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "auto-reload-config": Parser(\.autoReloadConfig, parseBool),
     "automatically-unhide-macos-hidden-apps": Parser(\.automaticallyUnhideMacosHiddenApps, parseBool),
     "accordion-padding": Parser(\.accordionPadding, parseInt),
+    "hidden-window-placement": Parser(\.hiddenWindowPlacement, parseHiddenWindowPlacement),
     persistentWorkspacesKey: Parser(\.persistentWorkspaces, parsePersistentWorkspaces),
     "exec-on-workspace-change": Parser(\.execOnWorkspaceChange, parseArrayOfStrings),
     "exec": Parser(\.execConfig, parseExecConfig),
@@ -416,6 +417,10 @@ private func parseDefaultContainerOrientation(_ raw: OrderedJson, _ backtrace: C
         DefaultContainerOrientation(rawValue: $0)
             .toResult(.init(backtrace, "Can't parse default container orientation '\($0)'"))
     }
+}
+
+private func parseHiddenWindowPlacement(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<HiddenWindowPlacement> {
+    parseString(raw, backtrace).flatMap { parseEnum($0, HiddenWindowPlacement.self).toParsedConfig(backtrace) }
 }
 
 extension ResOrStr where Failure == String {

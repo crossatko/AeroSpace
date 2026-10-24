@@ -193,10 +193,29 @@ private func layoutWorkspaces() async throws {
         workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
         try await workspace.layoutWorkspace()
     }
+    var monitorToHiddenLayout: [CGPoint: (geometry: HiddenMonitorGeometry, slots: [String: HiddenSlot])] = [:]
+    if config.hiddenWindowPlacement == .directional {
+        let allWorkspaces = Workspace.all // In AeroSpace's workspace order
+        for monitor in monitors {
+            let others = monitors.filter { $0.rect.topLeftCorner != monitor.rect.topLeftCorner }.map(\.rect)
+            let geometry = HiddenMonitorGeometry(monitorRect: monitor.rect, visibleRect: monitor.visibleRect, others: others)
+            let visible = monitor.activeWorkspace
+            let names = allWorkspaces
+                .filter { $0 == visible || (!$0.isVisible && $0.workspaceMonitor.rect.topLeftCorner == monitor.rect.topLeftCorner && !$0.allLeafWindowsRecursive.isEmpty) }
+                .map(\.name)
+            monitorToHiddenLayout[monitor.rect.topLeftCorner] = (geometry, hiddenSlots(workspaces: names, visible: visible.name, geometry: geometry))
+        }
+    }
     for workspace in Workspace.all where !workspace.isVisible {
-        let corner = monitorToOptimalHideCorner[workspace.workspaceMonitor.rect.topLeftCorner] ?? .bottomRightCorner
+        let monitorPoint = workspace.workspaceMonitor.rect.topLeftCorner
+        let corner = monitorToOptimalHideCorner[monitorPoint] ?? .bottomRightCorner
+        let directional = monitorToHiddenLayout[monitorPoint].flatMap { layout in layout.slots[workspace.name].map { (layout.geometry, $0) } }
         for window in workspace.allLeafWindowsRecursive {
-            try await (window as! MacWindow).hideInCorner(corner) // todo as!
+            if let (geometry, slot) = directional {
+                try await (window as! MacWindow).hideDirectionally(slot, geometry) // todo as!
+            } else {
+                try await (window as! MacWindow).hideInCorner(corner) // todo as!
+            }
         }
     }
 }
