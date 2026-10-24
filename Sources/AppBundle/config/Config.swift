@@ -50,6 +50,7 @@ struct Config: ConvenienceMutable {
     /// In points, 0 = auto
     var menuBarMaxWidth: Int = 0
     var hiddenWindowPlacement: HiddenWindowPlacement = .corner
+    var hiddenWindowSliver: CGFloat = 1
     var enableNormalizationOppositeOrientationForNestedContainers: Bool = true
     var dwindle: Bool = false
     var persistentWorkspaces: OrderedSet<String> = []

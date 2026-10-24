@@ -164,3 +164,41 @@ import Testing
         #expect(p.x >= 0 && p.x <= 0.5 && p.y >= 0 && p.y <= 0.5)
     }
 }
+
+@Suite struct HiddenSliverTests {
+    let geometry = HiddenMonitorGeometry(
+        monitorRect: Rect(topLeftX: 0, topLeftY: 0, width: 1000, height: 800),
+        visibleRect: Rect(topLeftX: 0, topLeftY: 30, width: 1000, height: 770),
+        others: [],
+    )
+
+    @Test func effectiveSliverRules() {
+        #expect(effectiveSliver(1, isZoom: false) == 1)
+        #expect(effectiveSliver(0.5, isZoom: false) == 0.5)
+        #expect(effectiveSliver(2, isZoom: true) == 0)
+    }
+
+    @Test func sliverMovesTheParkedFrame() {
+        let right = HiddenSlot(edge: .right, isLowerSide: false, band: 0, bandCount: 1)
+        let left = HiddenSlot(edge: .left, isLowerSide: true, band: 0, bandCount: 1)
+        let bottom = HiddenSlot(edge: .bottom, isLowerSide: true, band: 0, bandCount: 1)
+        func t(_ s: HiddenSlot, _ sl: CGFloat) -> CGPoint { hiddenTarget(slot: s, geometry: geometry, windowWidth: 400, relative: .zero, isZoom: false, sliver: sl) }
+        #expect(t(right, 1).x == 999)
+        #expect(t(right, 0.5).x == 999.5)
+        #expect(t(right, 0).x == 1000)
+        #expect(t(left, 0.5).x == -399.5)
+        #expect(t(left, 0).x == -400)
+        #expect(t(bottom, 0.5).y == 799.5)
+        #expect(t(bottom, 0).y == 800)
+    }
+
+    @MainActor @Test func configKey() {
+        #expect(parseConfig("").config.hiddenWindowSliver == 1)
+        #expect(parseConfig("hidden-window-sliver = 0").config.hiddenWindowSliver == 0)
+        #expect(parseConfig("hidden-window-sliver = 2").config.hiddenWindowSliver == 2)
+        #expect(parseConfig("hidden-window-sliver = '0.5'").config.hiddenWindowSliver == 0.5)
+        #expect(!parseConfig("hidden-window-sliver = '-1'").errors.isEmpty)
+        #expect(!parseConfig("hidden-window-sliver = 'abc'").errors.isEmpty)
+        #expect(!parseConfig("hidden-window-sliver = true").errors.isEmpty)
+    }
+}

@@ -77,13 +77,17 @@ func hiddenSlots(workspaces: [String], visible: String, geometry: HiddenMonitorG
     return result
 }
 
+/// How many points of a parked window stay on screen (`hidden-window-sliver`).
+/// Zoom will jump off if you do one pixel offset https://github.com/nikitabobko/AeroSpace/issues/527
+func effectiveSliver(_ configured: CGFloat, isZoom: Bool) -> CGFloat { isZoom ? 0 : max(0, configured) }
+
 /// - Parameters:
 ///   - relative: where the window's top left corner was inside the monitor before hiding, 0...1 on both axes.
 ///     Keeps the relative layout of the windows of a workspace
 ///   - windowWidth: only used for the left edge
-func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth: CGFloat, relative: CGPoint, isZoom: Bool) -> CGPoint {
-    // Zoom will jump off if you do one pixel offset https://github.com/nikitabobko/AeroSpace/issues/527
-    let sliver: CGFloat = isZoom ? 0 : 1
+///   - sliver: visible part in points, see `effectiveSliver`
+func hiddenTarget(slot: HiddenSlot, geometry: HiddenMonitorGeometry, windowWidth: CGFloat, relative: CGPoint, isZoom: Bool, sliver configuredSliver: CGFloat = 1) -> CGPoint {
+    let sliver = effectiveSliver(configuredSliver, isZoom: isZoom)
     let r = geometry.visibleRect
     let n = CGFloat(max(1, slot.bandCount))
     func unit(_ v: CGFloat) -> CGFloat { min(max(v, 0), 0.999) }
@@ -113,4 +117,12 @@ func unhiddenProportion(windowRect: Rect, monitorRect: Rect, allMonitorRects: [R
         return CGPoint(x: p.x / monitorRect.width, y: p.y / monitorRect.height)
     }
     return CGPoint(x: 0.15, y: 0.15)
+}
+
+/// `hidden-window-sliver`: an integer (points) or a string such as '0.5', because TOML numbers here have no floats
+func parseHiddenWindowSliverValue(int: Int?, string: String?) -> CGFloat? {
+    let value: Double?
+    if let int { value = Double(int) } else if let string { value = Double(string.trimmingCharacters(in: .whitespaces)) } else { value = nil }
+    guard let value, value.isFinite, value >= 0, value <= 20 else { return nil }
+    return CGFloat(value)
 }

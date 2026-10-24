@@ -564,6 +564,9 @@ Several hidden workspaces on one side get vertical bands, the nearest workspace 
 If an edge touches another monitor, the bottom edge is used for that side, and if that is blocked too, the usual corner.
 The default `'corner'` is the upstream behaviour.
 
+`hidden-window-sliver` (points, default `1` = upstream) sets how much of a parked window stays on screen in both modes. Give an integer, or a string such as `'0.5'` because the config format has no floats; Zoom always gets `0`.
+`0.5` is one physical pixel on a Retina display; on a 1x display it may round to 0 or 1. With `0`, macOS may consider the window to be on no display: mission control may not show it, and it may move when displays change.
+
 [#a-note-on-displays-have-separate-spaces]
 === A note on '`Displays have separate Spaces`'
 

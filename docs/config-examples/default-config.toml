@@ -30,6 +30,8 @@ menu-bar-max-width = 0
 # 'corner' puts them all in one screen corner. 'directional' puts workspaces before the visible one
 # beyond the left edge and later ones beyond the right edge, so mission control shows them spatially
 hidden-window-placement = 'corner'
+# Visible part of parked windows in points: an integer or a string like '0.5' (one Retina pixel). 0 may make macOS lose the window
+hidden-window-sliver = 1
 
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
