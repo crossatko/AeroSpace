@@ -170,11 +170,20 @@ func ffmLayerCounts(_ layer: Int) -> Bool {
 /// True if a window that is not the target covers the cursor. `windowsFrontToBack` is the window server order.
 /// Windows with alpha ~0 and AeroSpace's own windows are ignored. Another layer-0 window of the target's own app
 /// does not veto (apps keep invisible twin windows, e.g. browser tab groups, with identical frames).
-func ffmTopmostVeto(_ point: CGPoint, targetId: UInt32, targetPid: Int32, windowsFrontToBack: [FfmWindowInfo], ownPid: Int32) -> Bool {
+/// `raisesTarget`: the target is a floating window that is about to be raised. A layer-0 window that AeroSpace manages
+/// (`isManaged`) and that sits above it is then no veto: it only got above the floating window by a click/raise, and
+/// raising the target is exactly what puts the stacking right again. Without this, one click on a tiled window
+/// above a floating one would block hover-focus of the floating window for good. Panels, overlays (layer > 0) and
+/// unmanaged windows still veto.
+func ffmTopmostVeto(
+    _ point: CGPoint, targetId: UInt32, targetPid: Int32, windowsFrontToBack: [FfmWindowInfo], ownPid: Int32,
+    raisesTarget: Bool = false, isManaged: (UInt32) -> Bool = { _ in false },
+) -> Bool {
     for w in windowsFrontToBack {
         guard ffmLayerCounts(w.layer), w.alpha > 0.01, w.pid != ownPid, w.bounds.contains(point) else { continue }
         if w.id == targetId { return false }
         if w.pid == targetPid && w.layer == 0 { return false }
+        if raisesTarget && w.layer == 0 && isManaged(w.id) { continue }
         return true
     }
     return false

@@ -9,6 +9,7 @@ import Common
 @MainActor private var focusFollowsTask: Task<(), any Error>? = nil
 @MainActor private var focusFollowsTimer: Task<(), any Error>? = nil
 @MainActor private var ffmDebugLogEnabled = false
+@MainActor private var lastLoggedHit: FfmHit? = nil
 @MainActor private var ffmState = FfmState()
 /// Apps for which no-raise did not verify: they use raise from now on (until AeroSpace restarts)
 @MainActor private var noRaiseFailedApps: Set<String> = []
@@ -156,12 +157,14 @@ private nonisolated func noRaiseFocusAndVerify(pid: pid_t, windowId: UInt32) asy
     }
     let tiling = location.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: true)
     let r = tiling?.lastAppliedLayoutPhysicalRect
-    return ffmHitTest(
-        location,
-        floatingTopFirst: floating,
-        tilingId: tiling?.windowId,
-        tilingRect: r.map { CGRect(x: $0.topLeftX, y: $0.topLeftY, width: $0.width, height: $0.height) },
-    )
+    let tilingRect = r.map { CGRect(x: $0.topLeftX, y: $0.topLeftY, width: $0.width, height: $0.height) }
+    let result = ffmHitTest(location, floatingTopFirst: floating, tilingId: tiling?.windowId, tilingRect: tilingRect)
+    if ffmDebugLogEnabled, result != lastLoggedHit {
+        lastLoggedHit = result
+        let cands = floating.map { "\($0.windowId)@\(ffmRect($0.rect))" }.joined(separator: ",")
+        ffmLog("HIT cursor=\(ffmPt(location)) workspace=\(workspace.name) result=\(result) floating=[\(cands)] tiling=\(tiling.map { "\($0.windowId)@\(tilingRect.map(ffmRect) ?? "?")" } ?? "none")")
+    }
+    return result
 }
 
 @concurrent
@@ -186,9 +189,11 @@ private nonisolated func isAxWindowUnderMouse(_ location: CGPoint) async -> Bool
         return true
     }
     let targetPid = target.macApp.nsApp.processIdentifier
+    let isFloatingTarget: Bool = if case .floating = hit { true } else { false }
     let probe = await ffmProbe(location)
     let vetoed = ffmUnmanagedFrontVeto(focusedWindowId: probe.focusedWindowId) { Window.get(byId: $0) != nil }
-        || ffmTopmostVeto(location, targetId: targetId, targetPid: targetPid, windowsFrontToBack: probe.windows, ownPid: ProcessInfo.processInfo.processIdentifier)
+        || ffmTopmostVeto(location, targetId: targetId, targetPid: targetPid, windowsFrontToBack: probe.windows, ownPid: ProcessInfo.processInfo.processIdentifier,
+            raisesTarget: isFloatingTarget, isManaged: { Window.get(byId: $0) != nil })
     lastVeto = vetoed ? (targetId, nowMs) : nil
     if vetoed && ffmDebugLogEnabled { ffmLogVeto(location, targetId, targetPid, probe) }
     return vetoed
@@ -242,6 +247,8 @@ private nonisolated func ffmProbe(_ location: CGPoint) async -> FfmProbe {
     let kind = w.isFloating ? "floating" : "tiled"
     return "app=\((w as? MacWindow)?.macApp.nsApp.localizedName ?? "?") \(kind)"
 }
+
+private func ffmRect(_ r: CGRect) -> String { "\(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height))" }
 
 private func ffmPt(_ p: CGPoint) -> String { "\(Int(p.x)),\(Int(p.y))" }
 
