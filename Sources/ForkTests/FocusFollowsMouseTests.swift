@@ -196,3 +196,9 @@ private struct Driver {
         #expect(mode("").0.delayMs == 0)
     }
 }
+
+@Test func noRaiseModeNeverRaisesTiledWindows() {
+    #expect(ffmShouldRaise(hit: .tiling(1), inRaiseApps: false) == false)
+    #expect(ffmShouldRaise(hit: .floating(1), inRaiseApps: false) == true)
+    #expect(ffmShouldRaise(hit: .tiling(1), inRaiseApps: true) == true) // explicit raise-apps opt-in
+}

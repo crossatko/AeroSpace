@@ -186,3 +186,11 @@ func ffmUnmanagedFrontVeto(focusedWindowId: UInt32?, isManaged: (UInt32) -> Bool
     guard let id = focusedWindowId else { return false }
     return !isManaged(id)
 }
+
+/// Raise policy of no-raise mode. Floating targets always raise (they overlap, MRU order must match stacking order),
+/// explicit raise-apps raise. A tiled target never raises: not when SkyLight is unavailable and not when no-raise
+/// failed to verify for the app (both are only logged).
+func ffmShouldRaise(hit: FfmHit, inRaiseApps: Bool) -> Bool {
+    if case .floating = hit { return true }
+    return inRaiseApps
+}
