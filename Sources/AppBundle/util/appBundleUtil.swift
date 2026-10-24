@@ -54,6 +54,7 @@ private struct AppServerTerminationHandler: TerminationHandler {
 
 @MainActor
 func terminateApp() -> Never {
+    explicitQuitRequested = true
     lifecycleLog("TERMINATE terminateApp() stack:\n" + Thread.callStackSymbols.prefix(12).joined(separator: "\n"))
     NSApplication.shared.terminate(nil)
     die("Unreachable code")
@@ -156,6 +157,8 @@ public enum CancellationMode: Equatable, Sendable {
 private nonisolated(unsafe) var lifecycleSignalSources: [DispatchSourceSignal] = []
 
 @MainActor func initLifecycleLog() {
+    ProcessInfo.processInfo.disableAutomaticTermination("AeroSpace is a window manager")
+    ProcessInfo.processInfo.disableSuddenTermination()
     lifecycleLog("START pid=\(ProcessInfo.processInfo.processIdentifier) \(aeroSpaceAppVersion) \(gitShortHash)")
     NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
         MainActor.assumeIsolated { lifecycleLog("TERMINATE willTerminate notification") }
@@ -171,4 +174,22 @@ private nonisolated(unsafe) var lifecycleSignalSources: [DispatchSourceSignal] =
         source.resume()
         lifecycleSignalSources.append(source)
     }
+}
+
+@MainActor var explicitQuitRequested = false
+
+/// Keeps the app alive when AppKit/SwiftUI/the system ask it to terminate on their own (observed with the stock MenuBarExtra
+/// removed: no scene left). Allowed: our own Quit (terminateApp), and system quits that carry a reason (logout, shutdown, restart).
+public final class AeroSpaceAppDelegate: NSObject, NSApplicationDelegate {
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            let event = NSAppleEventManager.shared().currentAppleEvent
+            let hasReason = event?.attributeDescriptor(forKeyword: AEKeyword(0x7768793F /* 'why?' */)) != nil
+                || event?.paramDescriptor(forKeyword: AEKeyword(0x7768793F)) != nil
+            lifecycleLog("applicationShouldTerminate explicit=\(explicitQuitRequested) reason=\(hasReason) event=\(event?.description ?? "nil")")
+            return explicitQuitRequested || hasReason ? .terminateNow : .terminateCancel
+        }
+    }
+
+    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
