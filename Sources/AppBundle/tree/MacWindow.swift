@@ -129,11 +129,9 @@ final class MacWindow: Window {
             guard let windowRect = try await getAxRect(.cancellable) else { return }
             // Check for isHiddenInCorner for the second time because of the suspension point above
             if !isHiddenInCorner {
-                let topLeftCorner = windowRect.topLeftCorner
                 let monitorRect = windowRect.center.monitorApproximation.rect // Similar to layoutFloatingWindow. Non idempotent
-                let absolutePoint = topLeftCorner - monitorRect.topLeftCorner
                 prevUnhiddenProportionalPositionInsideWorkspaceRect =
-                    CGPoint(x: absolutePoint.x / monitorRect.width, y: absolutePoint.y / monitorRect.height)
+                    unhiddenProportion(windowRect: windowRect, monitorRect: monitorRect, allMonitorRects: monitorInfos.map(\.rect))
                 if isFloating {
                     lastFloatingSize = windowRect.size
                 }
