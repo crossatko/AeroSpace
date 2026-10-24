@@ -19,9 +19,9 @@ private struct Driver {
     var now = 1000
     var focusCalls: [UInt32] = []
 
-    mutating func move(_ p: CGPoint, dt: Int = 5) -> FfmDecision {
+    mutating func move(_ p: CGPoint, dt: Int = 5, vetoed: Bool = false) -> FfmDecision {
         now += dt
-        let d = s.feed(.mouseMoved(p, hit: hit(p), focusedId: focused), nowMs: now)
+        let d = s.feed(.mouseMoved(p, hit: hit(p), focusedId: focused, vetoed: vetoed), nowMs: now)
         if case .focus(let h) = d, let id = h.windowId {
             focusCalls.append(id)
             focused = id
@@ -131,6 +131,51 @@ private struct Driver {
         #expect(ffmHitTest(CGPoint(x: 150, y: 150), floatingTopFirst: [f1, f2], tilingId: 1, tilingRect: tile) == .floating(10))
         #expect(ffmHitTest(CGPoint(x: 400, y: 350), floatingTopFirst: [f1, f2], tilingId: 1, tilingRect: tile) == .tiling(1))
         #expect(ffmHitTest(CGPoint(x: 500, y: 350), floatingTopFirst: [], tilingId: 1, tilingRect: tile) == .none)
+    }
+}
+
+@Suite struct FocusFollowsMouseVetoTests {
+    private let p = CGPoint(x: 100, y: 100)
+    private func w(_ id: UInt32, pid: Int32 = 1, layer: Int = 0, alpha: Double = 1, _ r: CGRect = CGRect(x: 0, y: 0, width: 500, height: 500)) -> FfmWindowInfo {
+        FfmWindowInfo(id: id, pid: pid, layer: layer, alpha: alpha, bounds: r)
+    }
+
+    @Test func vetoedMoveDoesNotFocusAndIsRetriedLater() {
+        var d = Driver()
+        _ = d.move(a)
+        #expect(d.move(b, vetoed: true) == .none)
+        #expect(d.focusCalls.isEmpty)
+        #expect(d.move(b) == .focus(.tiling(2))) // veto gone: same target now focuses
+    }
+
+    @Test func unmanagedFrontWindowVetoes() {
+        #expect(ffmUnmanagedFrontVeto(focusedWindowId: 99) { $0 == 1 })
+        #expect(!ffmUnmanagedFrontVeto(focusedWindowId: 1) { $0 == 1 })
+        #expect(!ffmUnmanagedFrontVeto(focusedWindowId: nil) { _ in false })
+    }
+
+    @Test func topmostMismatchVetoes() {
+        // panel (layer 8, other app) above the target
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(9, pid: 2, layer: 8), w(5)], ownPid: 7))
+        // target on top
+        #expect(!ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(5), w(9, pid: 2)], ownPid: 7))
+        // another normal window of another app on top
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(9, pid: 2), w(5)], ownPid: 7))
+    }
+
+    @Test func ignoredWindowsDoNotVeto() {
+        let wins = [
+            w(20, pid: 3, layer: -2147483603), // desktop plumbing
+            w(21, pid: 3, layer: 24), // menubar
+            w(22, pid: 2, layer: 8, alpha: 0), // invisible overlay
+            w(23, pid: 7, layer: 0), // AeroSpace's own window
+            w(24, pid: 2, layer: 0, CGRect(x: 300, y: 300, width: 50, height: 50)), // does not contain the cursor
+            w(25, pid: 1, layer: 0), // twin window of the target's app
+            w(5),
+        ]
+        #expect(!ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: wins, ownPid: 7))
+        // Dock/Mission Control overlay (layer 20) counts
+        #expect(ffmTopmostVeto(p, targetId: 5, targetPid: 1, windowsFrontToBack: [w(30, pid: 4, layer: 20)] + wins, ownPid: 7))
     }
 }
 
