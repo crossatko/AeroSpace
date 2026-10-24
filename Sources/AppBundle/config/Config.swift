@@ -53,6 +53,7 @@ struct Config: ConvenienceMutable {
     var execConfig: ExecConfig = ExecConfig()
     var focusFollowsMouse: FocusFollowsMouse = FocusFollowsMouse()
     var mouseModifier: String = "" // modifier for move (left drag) / resize (right drag) anywhere on a window, "" = off
+    var gestures: Gestures = Gestures()
 
     var onFocusChanged: Shell<any Command> = .empty
     // var onFocusedWorkspaceChanged: [any Command] = []
@@ -67,6 +68,16 @@ struct Config: ConvenienceMutable {
 
 struct FocusFollowsMouse: ConvenienceMutable {
     var enabled: Bool = false
+}
+
+struct Gestures: ConvenienceMutable, Equatable, Sendable {
+    var workspaceSwipe: Bool = false
+    var workspaceSwipeFingers: Int = 3
+    /// Percent of the trackpad width the fingers have to travel
+    var workspaceSwipeThreshold: Int = 15
+    var workspaceSwipeNatural: Bool = true
+    var workspaceSwipeSkipEmpty: Bool = true
+    var workspaceSwipeWrap: Bool = false
 }
 
 enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvertible {
