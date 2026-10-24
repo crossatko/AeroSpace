@@ -449,6 +449,16 @@ The floating window parent container is determined as the smallest tiling contai
 
 This technique eliminates the need for an additional binding for focusing floating windows.
 
+[#mouse-modifier]
+=== Move and resize with a modifier key
+
+With `mouse-modifier = 'alt'` (default `''`, off), holding the modifier and left-dragging anywhere on a window moves it,
+and right-dragging resizes it from the nearest corner.
+Tiling windows swap with the tile under the cursor on drop (or change their weights when resized), floating windows just move.
+Accepted values: `'alt'`, `'cmd'`, `'ctrl'`, `'ctrl-alt'` (also `'shift'`).
+Only the exact modifier set triggers, so Option+Shift+drag still reaches the app, and clicks without the modifier are never touched.
+The feature needs the Accessibility permission.
+
 [#emulation-of-virtual-workspaces]
 == Emulation of virtual workspaces
 

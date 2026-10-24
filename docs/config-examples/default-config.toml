@@ -65,6 +65,10 @@ on-mode-changed = []
 
 focus-follows-mouse.enabled = false
 
+# Hold the modifier: left-drag anywhere on a window moves it, right-drag resizes it.
+# Values: 'alt', 'cmd', 'ctrl', 'ctrl-alt'. '' = off. Only the exact modifier set triggers.
+mouse-modifier = ''
+
 # Possible values: (qwerty|dvorak|colemak)
 # See https://nikitabobko.github.io/AeroSpace/guide#key-mapping
 key-mapping.preset = 'qwerty'
