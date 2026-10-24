@@ -216,6 +216,27 @@ key-mapping.key-notation-to-key-code = {
 key-mapping.preset = 'dvorak'  # or 'colemak'
 ----
 
+[#left-right-modifiers]
+=== Left and right modifiers
+
+`cmd`, `alt`, `ctrl` and `shift` modifiers match both left and right keys.
+If you want to bind only one side, use `lcmd`, `rcmd`, `lalt`, `ralt`, `lctrl`, `rctrl`, `lshift` or `rshift`.
+
+It's useful if you want to keep the other side free, for example, for typing special characters with the right `alt` key.
+
+[source,toml]
+----
+[mode.main.binding]
+    lalt-h = 'focus left' # ralt-h is not consumed by AeroSpace
+----
+
+[NOTE]
+====
+Side-specific bindings are implemented via a different macOS API than regular bindings.
+Unlike regular bindings, they don't work when "Secure Input" is enabled (e.g. when you type in a password field).
+If any side-specific binding is declared for a key and modifier combination (e.g. `lalt-h`), then `alt-h` and `ralt-h` are handled the same way and also stop working while Secure Input is on.
+====
+
 [#config-version]
 === config-version
 

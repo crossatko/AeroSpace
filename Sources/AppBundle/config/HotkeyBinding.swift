@@ -12,6 +12,7 @@ import HotKey
         key.isEnabled = false
     }
     hotkeys = [:]
+    syncSidedHotkeys([])
 }
 
 extension HotKey {
@@ -28,25 +29,19 @@ extension HotKey {
 @MainActor var activeMode: String? = mainModeId
 @MainActor func activateMode_nonCancellable(_ targetMode: String?) async {
     let targetBindings = targetMode.flatMap { config.modes[$0] }?.bindings ?? [:]
-    for binding in targetBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
+    // Carbon hotkeys can't distinguish left and right modifiers. If at least one binding in the "modifiers + key" group
+    // is sided (e.g. lalt-h), then the whole group (lalt-h, ralt-h, alt-h) is handled by the event tap
+    let sidedGroups = Set(targetBindings.values.filter { !$0.sidedModifiers.isEmpty }.map(\.unsidedDescription))
+    let (sidedBindings, carbonBindings) = targetBindings.partition { sidedGroups.contains($0.value.unsidedDescription) }
+    for binding in carbonBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
-            Task.startUnstructured {
-                if let activeMode {
-                    broadcastEvent(.bindingTriggered(
-                        mode: activeMode,
-                        binding: binding.descriptionWithKeyNotation,
-                    ))
-                    try await runLightSession(.hotkeyBinding, .checkServerIsEnabledOrDie()) { () throws in
-                        _ = await config.modes[activeMode]?.bindings[binding.descriptionWithKeyCode]?.commands
-                            .run(.defaultEnv, .emptyStdin)
-                    }
-                }
-            }
+            onHotkeyTriggered(binding)
         })
     }
     for (binding, key) in hotkeys {
-        key.isEnabled = targetBindings.keys.contains(binding)
+        key.isEnabled = carbonBindings.keys.contains(binding)
     }
+    syncSidedHotkeys(Array(sidedBindings.values))
     let oldMode = activeMode
     activeMode = targetMode
     if oldMode != targetMode {
@@ -55,25 +50,53 @@ extension HotKey {
     }
 }
 
+@MainActor func onHotkeyTriggered(_ binding: HotkeyBinding) {
+    Task.startUnstructured {
+        if let activeMode {
+            broadcastEvent(.bindingTriggered(
+                mode: activeMode,
+                binding: binding.descriptionWithKeyNotation,
+            ))
+            try await runLightSession(.hotkeyBinding, .checkServerIsEnabledOrDie()) { () throws in
+                _ = await config.modes[activeMode]?.bindings[binding.descriptionWithKeyCode]?.commands
+                    .run(.defaultEnv, .emptyStdin)
+            }
+        }
+    }
+}
+
 struct HotkeyBinding: Equatable, Sendable {
     let modifiers: NSEvent.ModifierFlags
+    let sidedModifiers: SidedModifiers
     let keyCode: Key
     let commands: Shell<any Command>
     let descriptionWithKeyCode: String
     let descriptionWithKeyNotation: String
 
-    init(_ modifiers: NSEvent.ModifierFlags, _ keyCode: Key, _ commands: Shell<any Command>, descriptionWithKeyNotation: String) {
+    init(
+        _ modifiers: NSEvent.ModifierFlags,
+        _ keyCode: Key,
+        _ commands: Shell<any Command>,
+        sidedModifiers: SidedModifiers = [],
+        descriptionWithKeyNotation: String,
+    ) {
         self.modifiers = modifiers
+        self.sidedModifiers = sidedModifiers
         self.keyCode = keyCode
         self.commands = commands
         self.descriptionWithKeyCode = modifiers.isEmpty
             ? keyCode.toString()
-            : modifiers.toString() + "-" + keyCode.toString()
+            : modifiers.toString(sidedModifiers) + "-" + keyCode.toString()
         self.descriptionWithKeyNotation = descriptionWithKeyNotation
+    }
+
+    var unsidedDescription: String {
+        modifiers.isEmpty ? keyCode.toString() : modifiers.toString() + "-" + keyCode.toString()
     }
 
     static func == (lhs: HotkeyBinding, rhs: HotkeyBinding) -> Bool {
         lhs.modifiers == rhs.modifiers &&
+            lhs.sidedModifiers == rhs.sidedModifiers &&
             lhs.keyCode == rhs.keyCode &&
             lhs.descriptionWithKeyCode == rhs.descriptionWithKeyCode &&
             lhs.commands.strictEquals(rhs.commands)
@@ -89,9 +112,9 @@ func parseBindings(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout 
     for (binding, rawCommand): (String, OrderedJson) in rawTable {
         let backtrace = backtrace + .key(binding)
         let binding = parseBinding(binding, backtrace, mapping)
-            .map { modifiers, key -> HotkeyBinding in
+            .map { modifiers, sidedModifiers, key -> HotkeyBinding in
                 let commands = parseShellOfCommandsForConfig(rawCommand, backtrace, &c)
-                return HotkeyBinding(modifiers, key, commands, descriptionWithKeyNotation: binding)
+                return HotkeyBinding(modifiers, key, commands, sidedModifiers: sidedModifiers, descriptionWithKeyNotation: binding)
             }
             .getOrNil(appendErrorTo: &c.errors)
         if let binding {
@@ -104,18 +127,20 @@ func parseBindings(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout 
     return result
 }
 
-func parseBinding(_ raw: String, _ backtrace: ConfigBacktrace, _ mapping: [String: Key]) -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> {
+func parseBinding(_ raw: String, _ backtrace: ConfigBacktrace, _ mapping: [String: Key]) -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> {
     let rawKeys = raw.split(separator: "-")
-    let modifiers: ResOrConfigParseDiagnostic<NSEvent.ModifierFlags> = rawKeys.dropLast()
+    let modifiers: ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers)> = rawKeys.dropLast()
         .mapAllOrFailure {
             modifiersMap[String($0)].toResult(.init(backtrace, "Can't parse modifiers in '\(raw)' binding"))
         }
-        .map { NSEvent.ModifierFlags($0) }
+        .map { modifiers in
+            (NSEvent.ModifierFlags(modifiers.map(\.0)), SidedModifiers(modifiers.map(\.1)))
+        }
     let key: ResOrConfigParseDiagnostic<Key> = rawKeys.last.flatMap { mapping[String($0)] }
         .toResult(.init(backtrace, "Can't parse the key in '\(raw)' binding"))
-    return modifiers.flatMap { modifiers -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> in
-        key.flatMap { key -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> in
-            .success((modifiers, key))
+    return modifiers.flatMap { modifiers, sidedModifiers -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> in
+        key.flatMap { key -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> in
+            .success((modifiers, sidedModifiers, key))
         }
     }
 }

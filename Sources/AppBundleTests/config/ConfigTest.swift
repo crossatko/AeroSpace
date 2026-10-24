@@ -128,6 +128,60 @@ final class ConfigTest: XCTestCase {
         )
     }
 
+    func testParseSidedModifiers() {
+        let result = parseConfig(
+            """
+            [mode.main.binding]
+                alt-h = 'focus left'
+                lalt-h = 'focus down'
+                ralt-shift-h = 'focus up'
+                lcmd-rcmd-h = 'focus right'
+            """,
+        )
+        assertEquals(result.errors, [])
+        assertEquals(result.config.modes[mainModeId]?.bindings.keys.sorted(), ["alt-h", "lalt-h", "lcmd-rcmd-h", "ralt-shift-h"])
+        let binding = result.config.modes[mainModeId]?.bindings["ralt-shift-h"]
+        assertEquals(binding?.modifiers, [.option, .shift])
+        assertEquals(binding?.sidedModifiers, .ralt)
+        assertEquals(binding?.unsidedDescription, "alt-shift-h")
+    }
+
+    func testSidedModifiersRedeclaration() {
+        let errors = parseConfig(
+            """
+            [mode.main.binding]
+                lalt-h = 'focus left'
+                alt-lalt-h = 'focus down'
+            """,
+        ).strErrors
+        assertEquals(errors.count, 1)
+        assertTrue(errors.first?.hasSuffix(": 'lalt-h' Binding redeclaration") == true)
+    }
+
+    func testSidedModifiersMatching() {
+        let mapping = KeyMapping().resolve()
+        func binding(_ raw: String) -> HotkeyBinding {
+            let (modifiers, sided, key) = parseBinding(raw, .emptyRoot, mapping).getOrDie()
+            return HotkeyBinding(modifiers, key, .empty, sidedModifiers: sided, descriptionWithKeyNotation: raw)
+        }
+        let lalt = CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | SidedModifiers.lalt.rawValue)
+        let ralt = CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | SidedModifiers.ralt.rawValue)
+        let bothAlts = CGEventFlags(rawValue: lalt.rawValue | ralt.rawValue)
+        let laltShift = CGEventFlags(rawValue: lalt.rawValue | CGEventFlags.maskShift.rawValue | SidedModifiers.rshift.rawValue)
+
+        assertTrue(binding("lalt-h").matches(lalt))
+        assertFalse(binding("lalt-h").matches(ralt))
+        assertFalse(binding("lalt-h").matches(bothAlts))
+        assertFalse(binding("lalt-h").matches(laltShift))
+        assertTrue(binding("ralt-h").matches(ralt))
+        assertTrue(binding("alt-h").matches(lalt))
+        assertTrue(binding("alt-h").matches(ralt))
+        assertTrue(binding("lalt-ralt-h").matches(bothAlts))
+        assertTrue(binding("lalt-shift-h").matches(laltShift))
+        assertFalse(binding("lalt-lshift-h").matches(laltShift))
+        assertTrue(binding("lalt-rshift-h").matches(laltShift))
+    }
+
     func testModesMustContainDefaultModeError() {
         let result = parseConfig(
             """
