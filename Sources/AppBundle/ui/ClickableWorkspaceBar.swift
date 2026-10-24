@@ -11,14 +11,17 @@ import Common
 
 @MainActor func syncClickableWorkspaceBar(_ config: Config) {
     TrayMenuModel.shared.menuBarClickable = config.menuBarClickable
+    TrayMenuModel.shared.menuBarHideStockItem = config.menuBarHideStockItem
     if config.menuBarClickable {
         if workspaceBar == nil { workspaceBar = ClickableWorkspaceBar() }
         workspaceBar?.scrollSwitch = config.menuBarScrollSwitch
         workspaceBar?.configuredMaxWidth = CGFloat(config.menuBarMaxWidth)
         workspaceBar?.refresh()
+        TrayMenuModel.shared.pillsInstalled = workspaceBar?.isInstalled ?? false
     } else {
         workspaceBar?.remove()
         workspaceBar = nil
+        TrayMenuModel.shared.pillsInstalled = false
     }
 }
 
@@ -28,6 +31,7 @@ import Common
     private var subscriptions: Set<AnyCancellable> = []
     var scrollSwitch = false { didSet { barView.scrollSwitch = scrollSwitch } }
     var configuredMaxWidth: CGFloat = 0
+    var isInstalled: Bool { statusItem.button != nil }
 
     init() {
         statusItem.button?.addSubview(barView)
@@ -164,9 +168,16 @@ import Common
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let reload = NSMenuItem(title: "Reload config", action: #selector(BarMenuTarget.reload), keyEquivalent: "")
-        reload.target = target
-        menu.addItem(reload)
+        let enabled = TrayMenuModel.shared.isEnabled
+        for (title, action) in [(enabled ? "Disable" : "Enable", #selector(BarMenuTarget.toggleEnabled)),
+                                ("Open config", #selector(BarMenuTarget.openConfig)),
+                                ("Reload config", #selector(BarMenuTarget.reload))]
+        {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = target
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit \(aeroSpaceAppName)", action: #selector(BarMenuTarget.quit), keyEquivalent: "")
         quit.target = target
         menu.addItem(quit)
@@ -181,18 +192,11 @@ import Common
     }
     @objc func reload() {
         guard let token: RunSessionGuard = .isServerEnabled else { return }
-        Task.startUnstructured {
-            try await runLightSession(.menuBarButton, token) {
-                _ = await reloadConfig_nonCancellable(args: ReloadConfigCmdArgs(rawArgs: []))
-            }
-        }
+        reloadConfigFromMenu(token)
     }
-    @objc func quit() {
-        Task.startUnstructured {
-            terminationHandler?.beforeTermination()
-            terminateApp()
-        }
-    }
+    @objc func toggleEnabled() { toggleEnabledFromMenu() }
+    @objc func openConfig() { openConfigInEditor() }
+    @objc func quit() { quitFromMenu() }
 }
 
 // Same call as the stock menu (MenuBar.swift)

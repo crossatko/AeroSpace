@@ -19,8 +19,10 @@ auto-reload-config = false
 
 # Clickable workspaces in the menu bar (fork feature): a second menu bar item with one pill per
 # occupied, visible or focused workspace. Click = focus, right click / Option-click = menu.
-# The stock item shrinks to an icon.
 menu-bar-clickable = false
+# Hide the stock AeroSpace item while the clickable item is shown. The stock item comes back by itself
+# whenever the clickable one is not (no Accessibility permission, AeroSpace disabled, menu-bar-clickable = false)
+menu-bar-hide-stock-item = true
 # Scroll over the clickable item = previous/next non-empty workspace (no wrap-around)
 menu-bar-scroll-switch = false
 # Maximum width of the clickable item in points, 0 = auto (40% of the screen, less the notch)

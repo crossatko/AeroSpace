@@ -46,6 +46,7 @@ struct Config: ConvenienceMutable {
     var automaticallyUnhideMacosHiddenApps: Bool = false
     var accordionPadding: Int = 30
     var menuBarClickable: Bool = false
+    var menuBarHideStockItem: Bool = true
     var menuBarScrollSwitch: Bool = false
     /// In points, 0 = auto
     var menuBarMaxWidth: Int = 0
