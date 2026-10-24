@@ -282,6 +282,19 @@ That's why unless you override `exec` section in your config, AeroSpace falls ba
 ----
 
 [#tree]
+== Trackpad workspace swipe
+
+`[gestures]` table (fork feature, off by default): a swipe with `workspace-swipe-fingers` fingers switches the monitor under the cursor to its next/previous workspace, once per swipe.
+
+* `workspace-swipe` (bool, default `false`)
+* `workspace-swipe-fingers` (`3` or `4`, default `3`)
+* `workspace-swipe-threshold` (percent of trackpad width, default `15`)
+* `workspace-swipe-natural` (default `true`): fingers right go to the previous workspace
+* `workspace-swipe-skip-empty` (default `true`), `workspace-swipe-wrap` (default `false`)
+
+Turn the macOS gesture with the same finger count off (System Settings > Trackpad > More Gestures).
+The listen-only event tap on gesture events does not hold any input back; Accessibility (already required) is the expected permission, Input Monitoring should not be needed.
+
 == Tree
 
 AeroSpace stores all windows and containers in a tree.
