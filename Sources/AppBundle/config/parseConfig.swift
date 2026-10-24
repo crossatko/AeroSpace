@@ -150,6 +150,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "accordion-padding": Parser(\.accordionPadding, parseInt),
     "menu-bar-clickable": Parser(\.menuBarClickable, parseBool),
     "menu-bar-hide-stock-item": Parser(\.menuBarHideStockItem, parseBool),
+    "menu-bar-debug-log": Parser(\.menuBarDebugLog, parseBool),
     "menu-bar-scroll-switch": Parser(\.menuBarScrollSwitch, parseBool),
     "menu-bar-max-width": Parser(\.menuBarMaxWidth) { raw, backtrace in
         parseInt(raw, backtrace).flatMap { n in

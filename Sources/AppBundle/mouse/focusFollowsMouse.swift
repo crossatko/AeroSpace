@@ -315,9 +315,12 @@ private func ffmOwnerName(pid: Int32) -> String {
 
 private let ffmLogMaxBytes = 1_000_000
 
-@MainActor private func ffmLog(_ message: String) {
+@MainActor private func ffmLog(_ message: String) { appendDebugLog(file: "ffm.log", message) }
+
+/// One line per call into ~/Library/Logs/AeroSpace/<file>, capped at 1 MB
+@MainActor func appendDebugLog(file: String, _ message: String) {
     let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/AeroSpace")
-    let url = dir.appendingPathComponent("ffm.log")
+    let url = dir.appendingPathComponent(file)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int, size > ffmLogMaxBytes {
         try? FileManager.default.removeItem(at: url) // cap: start over

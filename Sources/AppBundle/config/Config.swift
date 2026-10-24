@@ -48,6 +48,8 @@ struct Config: ConvenienceMutable {
     var menuBarClickable: Bool = false
     var menuBarHideStockItem: Bool = true
     var menuBarScrollSwitch: Bool = false
+    /// Log pill item geometry and mouse events to ~/Library/Logs/AeroSpace/menubar.log
+    var menuBarDebugLog: Bool = false
     /// In points, 0 = auto
     var menuBarMaxWidth: Int = 0
     var hiddenWindowPlacement: HiddenWindowPlacement = .corner
