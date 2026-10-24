@@ -8,10 +8,16 @@ import Common
 // Data comes from TrayMenuModel, layout and hit-testing from workspaceBarLayout.swift.
 
 @MainActor private var workspaceBar: ClickableWorkspaceBar? = nil
+@MainActor private var menuBarDebugLog = false
+
+@MainActor private func menuBarLog(_ message: @autoclosure () -> String) {
+    if menuBarDebugLog { appendDebugLog(file: "menubar.log", message()) }
+}
 
 @MainActor func syncClickableWorkspaceBar(_ config: Config) {
     TrayMenuModel.shared.menuBarClickable = config.menuBarClickable
     TrayMenuModel.shared.menuBarHideStockItem = config.menuBarHideStockItem
+    menuBarDebugLog = config.menuBarDebugLog
     if config.menuBarClickable {
         if workspaceBar == nil { workspaceBar = ClickableWorkspaceBar() }
         workspaceBar?.scrollSwitch = config.menuBarScrollSwitch
@@ -32,6 +38,8 @@ import Common
     var scrollSwitch = false { didSet { barView.scrollSwitch = scrollSwitch } }
     var configuredMaxWidth: CGFloat = 0
     var isInstalled: Bool { statusItem.button != nil }
+    private var monitors: [Any] = []
+    private var lastClickTimestamp: TimeInterval = -1
 
     init() {
         statusItem.button?.addSubview(barView)
@@ -40,6 +48,8 @@ import Common
         statusItem.button?.target = self
         statusItem.button?.action = #selector(barClicked(_:))
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        installEventMonitors()
+        menuBarLog("INSTALL button=\(statusItem.button != nil) window=\(statusItem.button?.window != nil)")
         let model = TrayMenuModel.shared
         // @Published emits before the property changes, so the sinks use the emitted values
         model.$workspaces.sink { [weak self] ws in self?.refresh(workspaces: ws) }.store(in: &subscriptions)
@@ -48,14 +58,58 @@ import Common
     }
 
     @objc private func barClicked(_ sender: NSStatusBarButton) {
-        guard let event = NSApp.currentEvent else { return }
+        guard let event = NSApp.currentEvent else { menuBarLog("ACTION no currentEvent"); return }
         let x = barLocalX(pointInButtonX: sender.convert(event.locationInWindow, from: nil).x, barOriginX: barView.frame.minX)
-        let isRight = event.type == .rightMouseUp || event.modifierFlags.contains(.option)
-        if isRight { barView.showMenu(atX: x, in: sender); return }
-        if let name = barView.layout.hitTest(x: x) { focusWorkspaceFromBar(name) }
+        menuBarLog("ACTION type=\(event.type.rawValue)")
+        handleClick(type: event.type, option: event.modifierFlags.contains(.option), timestamp: event.timestamp, x: x)
+    }
+
+    private func handleClick(type: NSEvent.EventType, option: Bool, timestamp: TimeInterval, x: CGFloat) {
+        guard let button = statusItem.button else { return }
+        if timestamp == lastClickTimestamp { return } // the action and the event monitors both see a click, handle it once
+        lastClickTimestamp = timestamp
+        let isRight = type == .rightMouseUp || option
+        let hit = barView.layout.hitTest(x: x)
+        menuBarLog("CLICK x=\(Int(x)) right=\(isRight) hit=\(hit ?? "none")")
+        if isRight { barView.showMenu(atX: x, in: button); return }
+        if let hit { focusWorkspaceFromBar(hit) }
+    }
+
+    /// The button's own action and the subview's scrollWheel are not reliable on every macOS version, so mouse events over
+    /// the item are also caught by monitors (local: events our app gets; global: events that go to another process).
+    private func installEventMonitors() {
+        let mask: NSEvent.EventTypeMask = [.scrollWheel, .leftMouseUp, .rightMouseUp]
+        let local = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            guard let self, let window = statusItem.button?.window, event.window === window else { return event }
+            handleMonitored(event, local: true)
+            return event
+        }
+        let global = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            MainActor.assumeIsolated { self?.handleMonitored(event, local: false) }
+        }
+        monitors = [local, global].compactMap { $0 }
+    }
+
+    private func handleMonitored(_ event: NSEvent, local: Bool) {
+        guard let button = statusItem.button, let window = button.window else { return }
+        let screenPoint = local ? window.convertPoint(toScreen: event.locationInWindow) : NSEvent.mouseLocation
+        guard window.frame.contains(screenPoint) else { return }
+        let x = barLocalX(pointInButtonX: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil).x, barOriginX: barView.frame.minX)
+        menuBarLog("EVENT local=\(local) type=\(event.type.rawValue) x=\(Int(x)) window=\(Int(window.frame.minX)),\(Int(window.frame.minY)) \(Int(window.frame.width))x\(Int(window.frame.height))")
+        let type = event.type, option = event.modifierFlags.contains(.option), ts = event.timestamp
+        if type == .scrollWheel {
+            if barView.scrollSwitch, let dir = barView.feedScroll(event) {
+                menuBarLog("SCROLL \(dir)")
+                switchWorkspaceFromBar(dir)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.handleClick(type: type, option: option, timestamp: ts, x: x) }
+        }
     }
 
     func remove() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
         subscriptions.removeAll()
         barView.removeFromSuperview()
         NSStatusBar.system.removeStatusItem(statusItem)
@@ -73,6 +127,8 @@ import Common
         statusItem.length = barView.layout.totalWidth
         barView.frame = NSRect(x: 0, y: 0, width: barView.layout.totalWidth, height: NSStatusBar.system.thickness)
         barView.needsDisplay = true
+        let w = statusItem.button?.window?.frame
+        menuBarLog("REFRESH length=\(Int(statusItem.length)) pills=\(barView.layout.pills.count) visible=\(statusItem.isVisible) button=\(statusItem.button != nil) window=\(w.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "nil") barFrame=\(Int(barView.frame.width))x\(Int(barView.frame.height))")
     }
 
     /// 0 in the config = auto: 40% of the main screen width, minus the notch if there is one
@@ -148,13 +204,11 @@ import Common
         }
     }
 
-    override func scrollWheel(with event: NSEvent) {
-        guard scrollSwitch else { return super.scrollWheel(with: event) }
+    /// Scroll events arrive through the bar's event monitors (see installEventMonitors)
+    func feedScroll(_ event: NSEvent) -> ScrollDirection? {
         // Vertical wheel, or the dominant axis of a trackpad scroll
         let delta = abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) ? event.scrollingDeltaY : event.scrollingDeltaX
-        if let dir = scrollTracker.feed(delta: delta, at: event.timestamp, isPrecise: event.hasPreciseScrollingDeltas, isGestureBegin: event.phase.contains(.began)) {
-            switchWorkspaceFromBar(dir)
-        }
+        return scrollTracker.feed(delta: delta, at: event.timestamp, isPrecise: event.hasPreciseScrollingDeltas, isGestureBegin: event.phase.contains(.began))
     }
 
     func showMenu(atX x: CGFloat, in button: NSView) {

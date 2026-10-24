@@ -25,6 +25,8 @@ menu-bar-clickable = false
 menu-bar-hide-stock-item = true
 # Scroll over the clickable item = previous/next non-empty workspace (no wrap-around)
 menu-bar-scroll-switch = false
+# Diagnostics: log the item's geometry and mouse events over it to ~/Library/Logs/AeroSpace/menubar.log
+menu-bar-debug-log = false
 # Maximum width of the clickable item in points, 0 = auto (40% of the screen, less the notch)
 menu-bar-max-width = 0
 
