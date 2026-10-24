@@ -83,3 +83,136 @@ import Testing
         #expect(f == CGRect(x: 104, y: 654, width: 392, height: 292))
     }
 }
+
+@Suite struct DropZoneTests {
+    let rect = CGRect(x: 100, y: 100, width: 400, height: 200) // centre (300, 200)
+
+    @Test func edgesAndCenter() {
+        #expect(dropZone(at: CGPoint(x: 300, y: 200), in: rect) == .center)
+        #expect(dropZone(at: CGPoint(x: 330, y: 215), in: rect) == .center)
+        #expect(dropZone(at: CGPoint(x: 120, y: 200), in: rect) == .left)
+        #expect(dropZone(at: CGPoint(x: 480, y: 200), in: rect) == .right)
+        #expect(dropZone(at: CGPoint(x: 300, y: 110), in: rect) == .top)
+        #expect(dropZone(at: CGPoint(x: 300, y: 290), in: rect) == .bottom)
+    }
+
+    @Test func diagonalsAreNormalizedToTheTile() {
+        // wide tile: 150px right of centre is only 0.75 of the half-width, 60px below is 0.6 of the half-height
+        #expect(dropZone(at: CGPoint(x: 450, y: 260), in: rect) == .right)
+        #expect(dropZone(at: CGPoint(x: 450, y: 290), in: rect) == .bottom) // ny 0.9 > nx 0.75
+    }
+
+    @Test func hysteresisKeepsPreviousZoneOnTheBoundary() {
+        // exactly on the diagonal bottom-right: nx = ny = 0.8
+        let p = CGPoint(x: 300 + 0.8 * 200, y: 200 + 0.8 * 100)
+        #expect(dropZone(at: p, in: rect, previous: .right) == .right)
+        #expect(dropZone(at: p, in: rect, previous: .bottom) == .bottom)
+        // a clear step across wins
+        let q = CGPoint(x: 300 + 0.5 * 200, y: 200 + 0.8 * 100)
+        #expect(dropZone(at: q, in: rect, previous: .right) == .bottom)
+        // leaving / entering the centre needs a margin too
+        let edgeish = CGPoint(x: 300 + 0.35 * 200, y: 200)
+        #expect(dropZone(at: edgeish, in: rect, previous: .center) == .center)
+        #expect(dropZone(at: edgeish, in: rect, previous: .right) == .right)
+        #expect(dropZone(at: edgeish, in: rect) == .right)
+    }
+
+    @Test func previewShowsTheTargetHalf() {
+        #expect(dropZoneRect(of: rect, zone: .center) == rect)
+        #expect(dropZoneRect(of: rect, zone: .left) == CGRect(x: 100, y: 100, width: 200, height: 200))
+        #expect(dropZoneRect(of: rect, zone: .right) == CGRect(x: 300, y: 100, width: 200, height: 200))
+        #expect(dropZoneRect(of: rect, zone: .top) == CGRect(x: 100, y: 100, width: 400, height: 100))
+        #expect(dropZoneRect(of: rect, zone: .bottom) == CGRect(x: 100, y: 200, width: 400, height: 100))
+    }
+
+    @Test func zoneChangeRelaysOut() {
+        let a = DropTarget(windowId: 1, zone: .top), b = DropTarget(windowId: 1, zone: .bottom)
+        #expect(dragTargetChanged(previous: a, new: b))
+        #expect(!dragTargetChanged(previous: a, new: a))
+        #expect(dragTargetChanged(previous: nil, new: a))
+    }
+
+    @Test func placementDecision() {
+        #expect(dropPlacement(zone: .center, parentOrientation: .h, parentChildCount: 2) == .swap)
+        #expect(dropPlacement(zone: .right, parentOrientation: .h, parentChildCount: 2) == .sibling(after: true))
+        #expect(dropPlacement(zone: .left, parentOrientation: .h, parentChildCount: 3) == .sibling(after: false))
+        #expect(dropPlacement(zone: .bottom, parentOrientation: .v, parentChildCount: 2) == .sibling(after: true))
+        #expect(dropPlacement(zone: .top, parentOrientation: .v, parentChildCount: 2) == .sibling(after: false))
+        #expect(dropPlacement(zone: .bottom, parentOrientation: .h, parentChildCount: 2) == .wrap(.v, draggedFirst: false))
+        #expect(dropPlacement(zone: .top, parentOrientation: .h, parentChildCount: 2) == .wrap(.v, draggedFirst: true))
+        #expect(dropPlacement(zone: .left, parentOrientation: .v, parentChildCount: 2) == .wrap(.h, draggedFirst: true))
+        #expect(dropPlacement(zone: .right, parentOrientation: .v, parentChildCount: 2) == .wrap(.h, draggedFirst: false))
+        // target alone in its parent: just turn the parent around
+        #expect(dropPlacement(zone: .bottom, parentOrientation: .h, parentChildCount: 1) == .reorient(.v, after: true))
+        #expect(dropPlacement(zone: .left, parentOrientation: .h, parentChildCount: 1) == .reorient(.h, after: false))
+    }
+}
+
+@MainActor @Suite(.serialized) struct DropTreeTests {
+    /// root(h)[a, b, c] with plain container nodes standing in for windows
+    private func tree() -> (root: TilingContainer, a: TilingContainer, b: TilingContainer, c: TilingContainer) {
+        for w in Workspace.all { for child in w.children { child.unbindFromParent() } }
+        let root = Workspace.get(byName: "dropTreeTests").rootTilingContainer
+        root.changeOrientation(.h)
+        let a = TilingContainer.newHTiles(parent: root, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        let b = TilingContainer.newHTiles(parent: root, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        let c = TilingContainer.newHTiles(parent: root, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        return (root, a, b, c)
+    }
+
+    @Test func belowWrapsTargetInVerticalContainer() {
+        let (root, a, b, c) = tree()
+        dropTilingNode(c, on: a, zone: .bottom)
+        #expect(root.children.count == 2 && root.children[1] === b)
+        let split = root.children[0] as? TilingContainer
+        #expect(split?.orientation == .v)
+        #expect(split?.children.count == 2 && split?.children[0] === a && split?.children[1] === c)
+        #expect(a.getWeight(.v) == c.getWeight(.v))
+    }
+
+    @Test func topPutsDraggedFirst() {
+        let (root, a, _, c) = tree()
+        dropTilingNode(c, on: a, zone: .top)
+        let split = root.children[0] as? TilingContainer
+        #expect(split?.orientation == .v)
+        #expect(split?.children[0] === c && split?.children[1] === a)
+    }
+
+    @Test func matchingOrientationInsertsSibling() {
+        let (root, a, b, c) = tree()
+        dropTilingNode(c, on: a, zone: .right)
+        #expect(root.children.count == 3)
+        #expect(root.children[0] === a && root.children[1] === c && root.children[2] === b)
+        dropTilingNode(c, on: a, zone: .left)
+        #expect(root.children[0] === c && root.children[1] === a && root.children[2] === b)
+    }
+
+    @Test func targetAloneInParentReorientsIt() {
+        let (root, a, b, c) = tree()
+        c.unbindFromParent()
+        // root = [a, b]; taking b out leaves a alone: drop b below it
+        dropTilingNode(b, on: a, zone: .bottom)
+        #expect(root.orientation == .v)
+        #expect(root.children.count == 2 && root.children[0] === a && root.children[1] === b)
+        _ = c
+    }
+
+    @Test func leavesNoEmptyContainerBehind() {
+        let (root, a, b, c) = tree()
+        // b and c share an inner container; moving both out must not leave an empty one
+        let inner = TilingContainer.newVTiles(parent: root, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        b.bind(to: inner, adaptiveWeight: 1, index: 0)
+        c.bind(to: inner, adaptiveWeight: 1, index: 1)
+        dropTilingNode(b, on: a, zone: .right)
+        dropTilingNode(c, on: a, zone: .right)
+        #expect(inner.children.isEmpty) // the caller's normalizeContainers() unbinds it
+        Workspace.get(byName: "dropTreeTests").normalizeContainers()
+        #expect(!root.children.contains { $0 === inner })
+    }
+
+    @Test func centerIsNotATreeOperation() {
+        let (root, a, b, c) = tree()
+        dropTilingNode(c, on: a, zone: .center)
+        #expect(root.children[0] === a && root.children[1] === b && root.children[2] === c)
+    }
+}

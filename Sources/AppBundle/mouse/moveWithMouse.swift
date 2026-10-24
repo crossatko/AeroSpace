@@ -74,6 +74,37 @@ func moveTilingWindow(_ window: Window) {
     }
 }
 
+/// Drop zone move: the window goes next to `target` (above / below / left / right of it) by
+/// splitting the target's slot, see `dropPlacement`. The window may come from another workspace.
+@MainActor
+func dropTilingWindow(_ window: Window, on target: Window, zone: DropZone) {
+    currentlyManipulatedWithMouseWindowId = window.windowId
+    window.lastAppliedLayoutPhysicalRect = nil
+    dropTilingNode(window, on: target, zone: zone)
+}
+
+/// The tree operation of `dropTilingWindow`, on plain nodes (testable without AX windows).
+/// The caller normalizes the workspaces afterwards (flatten what the move left behind).
+@MainActor
+func dropTilingNode(_ node: TreeNode, on target: TreeNode, zone: DropZone) {
+    guard zone != .center, node !== target, !target.parentsWithSelf.contains(where: { $0 === node }),
+          let parent = target.parent as? TilingContainer else { return }
+    node.unbindFromParent() // first: the target's parent may be the node's old parent
+    switch dropPlacement(zone: zone, parentOrientation: parent.orientation, parentChildCount: parent.children.count) {
+        case .swap: return
+        case .reorient(let orientation, let after):
+            parent.changeOrientation(orientation)
+            node.bind(to: parent, adaptiveWeight: WEIGHT_AUTO, index: target.ownIndex.orDie() + (after ? 1 : 0))
+        case .sibling(let after):
+            node.bind(to: parent, adaptiveWeight: WEIGHT_AUTO, index: target.ownIndex.orDie() + (after ? 1 : 0))
+        case .wrap(let orientation, let draggedFirst):
+            let data = target.unbindFromParent()
+            let split = TilingContainer(parent: parent, adaptiveWeight: data.adaptiveWeight, orientation, .tiles, index: data.index)
+            target.bind(to: split, adaptiveWeight: WEIGHT_AUTO, index: 0)
+            node.bind(to: split, adaptiveWeight: WEIGHT_AUTO, index: draggedFirst ? 0 : INDEX_BIND_LAST)
+    }
+}
+
 @MainActor
 func swapWindows(mruDominant window1: Window, _ window2: Window) {
     if window1 == window2 { return }
