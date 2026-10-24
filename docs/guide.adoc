@@ -490,6 +490,11 @@ Other options:
 In `'no-raise'` mode floating windows are always raised, otherwise they could stay hidden behind the tiled windows that were just focused.
 Focus does not move while a mouse button is held, so drags (including <<mouse-modifier,modifier drags>>) are not affected.
 
+Focus is also left alone when it would be stolen from something AeroSpace does not manage. Two checks run only at the moment a focus change is about to happen (never per mouse move, and they never choose the target, which always comes from AeroSpace's own layout):
+
+* The focused window of the focused app is not managed by AeroSpace (Raycast or Spotlight panel, a dialog, a password manager popup): focus-follows-mouse pauses until it is gone.
+* The window server's topmost visible window under the cursor is not the target (an overlay, a panel, Mission Control). Windows with alpha 0, the desktop/wallpaper plumbing (negative layers), the menu bar and status item layers (24, 25) and AeroSpace's own windows are ignored; another window of the target's own app does not count.
+
 [#emulation-of-virtual-workspaces]
 == Emulation of virtual workspaces
 
