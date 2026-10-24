@@ -48,6 +48,7 @@ struct Config: ConvenienceMutable {
     var menuBarClickable: Bool = false
     var menuBarHideStockItem: Bool = true
     var menuBarScrollSwitch: Bool = false
+    var menuBarWorkspaceLabels: MenuBarWorkspaceLabels = .name
     /// Log pill item geometry and mouse events to ~/Library/Logs/AeroSpace/menubar.log
     var menuBarDebugLog: Bool = false
     /// In points, 0 = auto
@@ -116,6 +117,13 @@ enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvert
     static func < (lhs: ConfigVersion, rhs: ConfigVersion) -> Bool { lhs.rawValue < rhs.rawValue }
 
     var description: String { rawValue.description }
+}
+
+enum MenuBarWorkspaceLabels: String {
+    /// The workspace name
+    case name
+    /// The key of the main-mode binding that switches to the workspace, the name if there is none
+    case binding
 }
 
 enum DefaultContainerOrientation: String {

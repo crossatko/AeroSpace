@@ -177,3 +177,25 @@ private func names(_ l: WorkspaceBarLayout) -> [String] { l.pills.map { $0.item.
         #expect(visible(installed: false))
     }
 }
+
+@Suite struct WorkspaceBindingLabelTests {
+    private func c(_ n: String, _ w: String) -> WorkspaceBindingCandidate { .init(notation: n, workspace: w) }
+
+    @Test func keyPartOfTheBinding() {
+        #expect(workspaceLabelsFromBindings([c("ctrl-alt-shift-a", "1"), c("ctrl-alt-shift-s", "2")]) == ["1": "a", "2": "s"])
+    }
+
+    @Test func fewestModifiersThenAlphabetical() {
+        #expect(workspaceLabelsFromBindings([c("ctrl-alt-shift-a", "1"), c("alt-q", "1")]) == ["1": "q"])
+        #expect(workspaceLabelsFromBindings([c("alt-z", "1"), c("alt-b", "1")]) == ["1": "b"])
+        #expect(workspaceLabelsFromBindings([c("alt-b", "1"), c("alt-z", "1")]) == ["1": "b"])
+        #expect(workspaceLabelsFromBindings([c("alt-2", "1"), c("3", "1")]) == ["1": "3"])
+    }
+
+    @Test func missingBindingFallsBackToName() {
+        let labels = workspaceLabelsFromBindings([c("alt-a", "1")])
+        #expect(labels["2"] == nil)
+        #expect(WorkspaceBarItem(name: "2", textWidth: 5, label: labels["2"]).display == "2")
+        #expect(WorkspaceBarItem(name: "1", textWidth: 5, label: labels["1"]).display == "a")
+    }
+}

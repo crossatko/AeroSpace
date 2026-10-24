@@ -632,6 +632,7 @@ Only occupied, visible and focused workspaces are shown, grouped by monitor, in 
 * Left click on a pill focuses the workspace.
 * Right click or Option-click opens a menu (all workspaces, Enable/Disable, Open config, Reload config, Quit).
 * `menu-bar-scroll-switch = true`: scrolling over the item goes to the previous/next non-empty workspace on the monitor under the cursor, once per flick, no wrap-around.
+* `menu-bar-workspace-labels = 'binding'`: pills show the key that switches to the workspace instead of its name. The label comes from the main-mode binding whose command is exactly `workspace <name>`, e.g. `ctrl-alt-shift-a = 'workspace 1'` gives `a`; with several such bindings the one with the fewest modifiers wins, then the alphabetically first. Workspaces without such a binding keep their name. The default `'name'` shows workspace names. Workspace names themselves are not changed.
 * `menu-bar-max-width` (points, `0` = auto, 40% of the screen minus the notch): when the item is too wide, pills of non-visible workspaces are shortened to their first character, then dropped from the end. Visible and focused workspaces are always kept.
 
 == Callbacks

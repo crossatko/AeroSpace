@@ -22,6 +22,7 @@ import Common
         if workspaceBar == nil { workspaceBar = ClickableWorkspaceBar() }
         workspaceBar?.scrollSwitch = config.menuBarScrollSwitch
         workspaceBar?.configuredMaxWidth = CGFloat(config.menuBarMaxWidth)
+        workspaceBar?.setLabels(config.menuBarWorkspaceLabels == .binding ? workspaceLabelsFromBindings(mainModeWorkspaceBindings(config)) : [:])
         workspaceBar?.refresh()
         TrayMenuModel.shared.pillsInstalled = workspaceBar?.isInstalled ?? false
     } else {
@@ -31,12 +32,22 @@ import Common
     }
 }
 
+/// The main-mode bindings that are exactly `workspace <name>`
+@MainActor private func mainModeWorkspaceBindings(_ config: Config) -> [WorkspaceBindingCandidate] {
+    (config.modes[mainModeId]?.bindings.values ?? [:].values).compactMap { binding in
+        guard case .cmd(let cmd) = binding.commands, let ws = cmd as? WorkspaceCommand,
+              case .direct(let name) = ws.args.target.val else { return nil }
+        return WorkspaceBindingCandidate(notation: binding.descriptionWithKeyNotation, workspace: name.raw)
+    }
+}
+
 @MainActor private final class ClickableWorkspaceBar {
     private let statusItem = NSStatusBar.system.statusItem(withLength: 0)
     private let barView = WorkspaceBarView()
     private var subscriptions: Set<AnyCancellable> = []
     var scrollSwitch = false { didSet { barView.scrollSwitch = scrollSwitch } }
     var configuredMaxWidth: CGFloat = 0
+    func setLabels(_ labels: [String: String]) { barView.labels = labels }
     var isInstalled: Bool { statusItem.button != nil }
     private var monitors: [Any] = []
     private var lastClickTimestamp: TimeInterval = -1
@@ -147,6 +158,7 @@ import Common
     var metrics = WorkspaceBarMetrics()
     var scrollSwitch = false
     var workspaces: [WorkspaceViewModel] = [] { didSet { relayout() } }
+    var labels: [String: String] = [:] { didSet { if labels != oldValue { relayout(); needsDisplay = true } } }
     private(set) var layout = layoutWorkspaceBar([])
     private var scrollTracker = ScrollSwitchTracker()
     private let font = NSFont.menuBarFont(ofSize: 0)
@@ -154,12 +166,13 @@ import Common
     private func relayout() {
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
         layout = layoutWorkspaceBar(workspaces.map { ws in
-            WorkspaceBarItem(
+            let text = labels[ws.name] ?? ws.name
+            return WorkspaceBarItem(
                 name: ws.name,
-                textWidth: ceil((ws.name as NSString).size(withAttributes: attrs).width),
-                shortTextWidth: ceil((String(ws.name.prefix(1)) as NSString).size(withAttributes: attrs).width),
+                textWidth: ceil((text as NSString).size(withAttributes: attrs).width),
+                shortTextWidth: ceil((String(text.prefix(1)) as NSString).size(withAttributes: attrs).width),
                 isFocused: ws.isFocused, isVisible: ws.isVisible, isEmpty: ws.isEffectivelyEmpty,
-                hasFullscreenWindows: ws.hasFullscreenWindows, monitorIndex: ws.monitorIndex,
+                hasFullscreenWindows: ws.hasFullscreenWindows, monitorIndex: ws.monitorIndex, label: labels[ws.name],
             )
         }, metrics)
     }
@@ -173,7 +186,7 @@ import Common
             let item = pill.item
             let rect = NSRect(x: pill.x, y: y, width: pill.width, height: pillHeight)
             let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-            let text = pill.isCompact ? String(item.name.prefix(1)) : item.name
+            let text = pill.isCompact ? String(item.display.prefix(1)) : item.display
             let textSize = (text as NSString).size(withAttributes: [.font: font])
             let textOrigin = NSPoint(x: rect.minX + (rect.width - textSize.width) / 2, y: rect.minY + (rect.height - textSize.height) / 2)
             if item.isFocused {
