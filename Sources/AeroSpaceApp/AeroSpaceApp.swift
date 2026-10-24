@@ -5,6 +5,7 @@ import SwiftUI
 
 @main
 struct AeroSpaceApp: App {
+    @NSApplicationDelegateAdaptor(AeroSpaceAppDelegate.self) var appDelegate
     @StateObject var viewModel = TrayMenuModel.shared
     @StateObject var messageModel = MessageModel.shared
     @Environment(\.openWindow) var openWindow: OpenWindowAction

@@ -53,7 +53,8 @@ import Common
     private var lastClickTimestamp: TimeInterval = -1
 
     init() {
-        statusItem.button?.addSubview(barView)
+        // The pills are drawn into the button's image (see refresh): system-hosted status items do not take custom subviews
+        statusItem.button?.imagePosition = .imageOnly
         // Clicks must go through the button's own action: the subview never gets mouseUp, because it does not
         // override mouseDown, so the event goes up to NSStatusBarButton, whose tracking loop swallows mouseUp.
         statusItem.button?.target = self
@@ -70,7 +71,7 @@ import Common
 
     @objc private func barClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { menuBarLog("ACTION no currentEvent"); return }
-        let x = barLocalX(pointInButtonX: sender.convert(event.locationInWindow, from: nil).x, barOriginX: barView.frame.minX)
+        let x = barLocalX(pointInButtonX: sender.convert(event.locationInWindow, from: nil).x, barOriginX: barOrigin(in: sender))
         menuBarLog("ACTION type=\(event.type.rawValue)")
         handleClick(type: event.type, option: event.modifierFlags.contains(.option), timestamp: event.timestamp, x: x)
     }
@@ -96,7 +97,14 @@ import Common
             return event
         }
         let global = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
-            MainActor.assumeIsolated { self?.handleMonitored(event, local: false) }
+            MainActor.assumeIsolated {
+                let p = NSEvent.mouseLocation
+                if let screen = NSScreen.screens.first(where: { $0.frame.contains(p) }), p.y > screen.frame.maxY - 40 {
+                    let w = self?.statusItem.button?.window?.frame
+                    menuBarLog("ANY type=\(event.type.rawValue) at=\(Int(p.x)),\(Int(p.y)) itemWindow=\(w.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "nil")")
+                }
+                self?.handleMonitored(event, local: false)
+            }
         }
         monitors = [local, global].compactMap { $0 }
     }
@@ -105,7 +113,7 @@ import Common
         guard let button = statusItem.button, let window = button.window else { return }
         let screenPoint = local ? window.convertPoint(toScreen: event.locationInWindow) : NSEvent.mouseLocation
         guard window.frame.contains(screenPoint) else { return }
-        let x = barLocalX(pointInButtonX: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil).x, barOriginX: barView.frame.minX)
+        let x = barLocalX(pointInButtonX: button.convert(window.convertPoint(fromScreen: screenPoint), from: nil).x, barOriginX: barOrigin(in: button))
         menuBarLog("EVENT local=\(local) type=\(event.type.rawValue) x=\(Int(x)) window=\(Int(window.frame.minX)),\(Int(window.frame.minY)) \(Int(window.frame.width))x\(Int(window.frame.height))")
         let type = event.type, option = event.modifierFlags.contains(.option), ts = event.timestamp
         if type == .scrollWheel {
@@ -118,11 +126,16 @@ import Common
         }
     }
 
+    /// x of the image inside the button (the button centers it and adds padding)
+    private func barOrigin(in button: NSView) -> CGFloat {
+        max(0, (button.bounds.width - barView.layout.totalWidth) / 2)
+    }
+
     func remove() {
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors.removeAll()
         subscriptions.removeAll()
-        barView.removeFromSuperview()
+        statusItem.button?.image = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -136,10 +149,14 @@ import Common
         barView.metrics.maxWidth = autoMaxWidth()
         barView.workspaces = workspaces
         statusItem.length = barView.layout.totalWidth
-        barView.frame = NSRect(x: 0, y: 0, width: barView.layout.totalWidth, height: NSStatusBar.system.thickness)
-        barView.needsDisplay = true
+        let size = NSSize(width: max(barView.layout.totalWidth, 1), height: NSStatusBar.system.thickness)
+        let view = barView
+        statusItem.button?.image = NSImage(size: size, flipped: false) { _ in
+            MainActor.assumeIsolated { view.drawPills(height: size.height) }
+            return true
+        }
         let w = statusItem.button?.window?.frame
-        menuBarLog("REFRESH length=\(Int(statusItem.length)) pills=\(barView.layout.pills.count) visible=\(statusItem.isVisible) button=\(statusItem.button != nil) window=\(w.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "nil") barFrame=\(Int(barView.frame.width))x\(Int(barView.frame.height))")
+        menuBarLog("REFRESH length=\(Int(statusItem.length)) pills=\(barView.layout.pills.count) visible=\(statusItem.isVisible) button=\(statusItem.button != nil) window=\(w.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "nil") image=\(Int(barView.layout.totalWidth))x\(Int(NSStatusBar.system.thickness))")
     }
 
     /// 0 in the config = auto: 40% of the main screen width, minus the notch if there is one
@@ -177,8 +194,7 @@ import Common
         }, metrics)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let h = bounds.height
+    func drawPills(height h: CGFloat) {
         let pillHeight = min(h - 6, 18)
         let y = (h - pillHeight) / 2
         let color = NSColor.labelColor
