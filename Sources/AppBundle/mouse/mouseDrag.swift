@@ -29,8 +29,8 @@ struct MouseDrag {
     /// Cursor position from the tap: the drag events are swallowed, so
     /// NSEvent.mouseLocation stays frozen at the mouse down point.
     var current: CGPoint
-    /// Tile the dragged window last took over (live grid), to relayout only on a change
-    var lastTarget: UInt32? = nil
+    /// Tile and zone the dragged window last took over (live grid), to relayout only on a change
+    var lastTarget: DropTarget? = nil
 }
 
 /// True from mouse down to the end of the commit at mouse up: AX moved/resized
@@ -206,14 +206,22 @@ private func liveStep(_ drag: MouseDrag) async {
         let workspace = point.monitorApproximation.activeWorkspace
         let found = point.findWindowRecursively(in: workspace.rootTilingContainer, virtual: false, fullscreenCoversAll: false)
         if found == nil || found == window { mouseDrag?.lastTarget = nil } // over its own slot (or no tile)
-        guard let target = found, target != window, let targetRect = target.lastAppliedLayoutPhysicalRect,
-              isDeepInside(point, targetRect.toCGRect()),
-              dragTargetChanged(previous: mouseDrag?.lastTarget, new: target.windowId) else { return }
-        mouseDrag?.lastTarget = target.windowId
-        showDropPreview(targetRect.toCGRect())
-        moveTilingWindow(window)
+        guard let target = found, target != window, let targetRect = target.lastAppliedLayoutPhysicalRect?.toCGRect(),
+              isDeepInside(point, targetRect) else { return }
+        let zone = dropZone(at: point, in: targetRect,
+                            previous: mouseDrag?.lastTarget?.windowId == target.windowId ? mouseDrag?.lastTarget?.zone : nil)
+        let dropTarget = DropTarget(windowId: target.windowId, zone: zone)
+        guard dragTargetChanged(previous: mouseDrag?.lastTarget, new: dropTarget) else { return }
+        mouseDrag?.lastTarget = dropTarget
+        showDropPreview(dropZoneRect(of: targetRect, zone: zone))
+        if zone == .center {
+            moveTilingWindow(window) // swap (next to the tile when it comes from another monitor)
+        } else {
+            dropTilingWindow(window, on: target, zone: zone)
+        }
         touched.append(workspace)
-        if window.nodeWorkspace != before { before?.normalizeContainers() }
+        before?.normalizeContainers()
+        if workspace != before { workspace.normalizeContainers() }
     }
     for workspace in Set(touched) where workspace.isVisible {
         try? await workspace.layoutWorkspace()
