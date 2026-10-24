@@ -5,7 +5,7 @@ import os
 // Hyprland `bindm = SUPER, mouse:272, movewindow` / `mouse:273, resizewindow`.
 // With `mouse-modifier` held, a left drag anywhere on a window moves it and a right
 // drag resizes it from the nearest corner. Ported from Skyland (MIT,
-// https://github.com/crossatko/skyland, skyland/mouseDrag.swift), without the live
+// https://github.com/waxdred/skyland, skyland/mouseDrag.swift), without the live
 // feedback and the drop preview.
 //
 // While the drag runs only the window frame is changed with AX. At mouse up the

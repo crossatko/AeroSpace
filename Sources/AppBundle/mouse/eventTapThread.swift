@@ -1,6 +1,6 @@
 import AppKit
 
-// Ported from Skyland (MIT, https://github.com/crossatko/skyland): the mouse drag tap
+// Ported from Skyland (MIT, https://github.com/waxdred/skyland): the mouse drag tap
 // runs on its own thread. Every click of every app goes through it, and on the main run
 // loop it would wait for whatever the main thread is busy with (refresh sessions,
 // layouts). The callback lets the events AeroSpace does not want through right away and

@@ -3,7 +3,7 @@ import Common
 
 // Drop preview while a tile is dragged with mouse-modifier: a click-through translucent
 // rect over the slot the window will land in. Modelled on Skyland's dropPreview.swift
-// (MIT, https://github.com/crossatko/skyland); the colour is the system accent.
+// (MIT, https://github.com/waxdred/skyland); the colour is the system accent.
 
 @MainActor private var dropPreview: NSPanel? = nil
 
