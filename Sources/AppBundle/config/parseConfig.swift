@@ -431,18 +431,17 @@ private func parseDefaultContainerOrientation(_ raw: OrderedJson, _ backtrace: C
     }
 }
 
-<<<<<<< HEAD
 private func parseMouseModifierConfig(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<String> {
     parseString(raw, backtrace).flatMap {
         ($0.isEmpty || parseMouseModifier($0) != nil)
             ? .success($0)
             : .failure(.init(backtrace, "Can't parse mouse modifier '\($0)'. Use '' or alt, cmd, ctrl, shift, combined with '-' (e.g. 'ctrl-alt')"))
     }
-=======
+}
+
 private func parseHiddenWindowSliver(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<CGFloat> {
     parseHiddenWindowSliverValue(int: raw.asIntOrNil, string: raw.asStringOrNil)
         .toResult(.init(backtrace, "Expected a number of points between 0 and 20, as an integer or a string like '0.5'"))
->>>>>>> exp/stable-hidden-placement
 }
 
 private func parseHiddenWindowPlacement(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<HiddenWindowPlacement> {
