@@ -487,7 +487,7 @@ Other options:
 * `focus-follows-mouse.delay-ms` (default `0`): the cursor has to rest over a window for this long before focus moves
 * `focus-follows-mouse.raise-apps` (default `[]`): bundle ids of apps that always use `'raise'`, e.g. apps that ignore no-raise focus
 
-In `'no-raise'` mode floating windows are always raised, otherwise they could stay hidden behind the tiled windows that were just focused.
+In `'no-raise'` mode floating windows are not raised either; among overlapping floating windows the one topmost at the cursor (real stacking order) gets focus, and only apps listed in `raise-apps` are raised.
 Focus does not move while a mouse button is held, so drags (including <<mouse-modifier,modifier drags>>) are not affected.
 
 Focus is also left alone when it would be stolen from something AeroSpace does not manage. Two checks run only at the moment a focus change is about to happen (never per mouse move, and they never choose the target, which always comes from AeroSpace's own layout):
