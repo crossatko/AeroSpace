@@ -61,6 +61,15 @@ workspace-swipe-skip-empty = true
 workspace-swipe-wrap = false
 ```
 
+**Magic Mouse workspace swipe.** The same swipe on a Magic Mouse. macOS only gives touch data for trackpads, so this reads raw contacts from the private `MultitouchSupport.framework` (loaded at runtime; if it is missing or changes, the feature is silently off). Turn off "Swipe between full-screen apps" in System Settings > Mouse > More Gestures. Contacts that are not firmly touching (hovering, lifting) are ignored so a gripping hand does not trigger; the mouse is found again every few seconds, so connecting it later works. `workspace-swipe-natural`, `-skip-empty` and `-wrap` are shared.
+
+```toml
+[gestures]
+magic-mouse-swipe = true
+magic-mouse-swipe-fingers = 2        # 1 | 2 | 3
+magic-mouse-swipe-threshold = 25     # percent of the mouse surface width
+```
+
 **Focus follows mouse without raising.** `'no-raise'` focuses the window under the cursor without bringing it to the front (floating windows are not raised either). It uses private SkyLight calls, the technique known from [yabai](https://github.com/koekeishiya/yabai) (MIT); it works with SIP enabled. Focus is deliberately not moved when it would be stolen from something AeroSpace does not manage: an unmanaged window has focus (launcher or dialog panels), or another window covers the cursor (overlays, Mission Control, hosted content). `mode = 'raise'` is the classic raising behaviour, and apps that ignore no-raise focus can be listed in `raise-apps`.
 
 ```toml

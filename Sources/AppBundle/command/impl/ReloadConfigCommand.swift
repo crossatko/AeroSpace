@@ -57,6 +57,7 @@ struct ReloadConfigResult {
         syncStartAtLogin()
         syncFocusFollowsMouse(config)
         syncWorkspaceSwipe(config)
+        syncMagicMouseSwipe(config)
         syncClickableWorkspaceBar(config)
         syncConfigFileWatcher()
     }

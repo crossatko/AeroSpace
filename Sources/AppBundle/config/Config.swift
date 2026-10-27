@@ -106,6 +106,10 @@ struct Gestures: ConvenienceMutable, Equatable, Sendable {
     var workspaceSwipeNatural: Bool = true
     var workspaceSwipeSkipEmpty: Bool = true
     var workspaceSwipeWrap: Bool = false
+    var magicMouseSwipe: Bool = false
+    var magicMouseSwipeFingers: Int = 2
+    /// Percent of the Magic Mouse surface width the fingers have to travel
+    var magicMouseSwipeThreshold: Int = 25
 }
 
 enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvertible {

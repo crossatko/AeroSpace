@@ -96,3 +96,25 @@ private func run(_ t: inout SwipeTracker, _ events: [(Double, [TouchSample])]) -
         #expect(run(&t, [(0, fingers(3, x: 0.3)), (0.02, fingers(3, x: 0.5)), (0.04, []), (0.06, fingers(3, x: 0.7))]) == [.prev])
     }
 }
+
+@Suite struct MagicMouseTouchTests {
+    @Test func deviceClassification() {
+        #expect(isMagicMouseDevice(isBuiltIn: false, familyId: 112))
+        #expect(!isMagicMouseDevice(isBuiltIn: true, familyId: 112))
+        #expect(!isMagicMouseDevice(isBuiltIn: true, familyId: 114))
+        #expect(!isMagicMouseDevice(isBuiltIn: false, familyId: 128))
+    }
+
+    @Test func contactStates() {
+        #expect(!magicMouseSample(x: 0.5, y: 0.5, state: 4).isResting)
+        #expect(magicMouseSample(x: 0.5, y: 0.5, state: 2).isResting)
+        #expect(magicMouseSample(x: 0.5, y: 0.5, state: 6).isEnded)
+        #expect(!magicMouseSample(x: 0.5, y: 0.5, state: 4).isEnded)
+    }
+
+    @Test func twoFingerMouseSwipe() {
+        var t = SwipeTracker(fingers: 2, threshold: 0.25, natural: true)
+        let f = { (x: Double) in [magicMouseSample(x: x, y: 0.5, state: 4), magicMouseSample(x: x + 0.02, y: 0.5, state: 4)] }
+        #expect([0.2, 0.3, 0.5].enumerated().compactMap { t.feed(f($1), at: Double($0) * 0.02) } == [.prev])
+    }
+}

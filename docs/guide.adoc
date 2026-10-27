@@ -313,6 +313,8 @@ That's why unless you override `exec` section in your config, AeroSpace falls ba
 * `workspace-swipe-natural` (default `true`): fingers right go to the previous workspace
 * `workspace-swipe-skip-empty` (default `true`), `workspace-swipe-wrap` (default `false`)
 
+Magic Mouse: `magic-mouse-swipe` (bool, default `false`), `magic-mouse-swipe-fingers` (`1` to `3`, default `2`), `magic-mouse-swipe-threshold` (percent of the mouse surface width, default `25`). `workspace-swipe-natural`, `-skip-empty` and `-wrap` apply to it too. It reads raw contacts from the private MultitouchSupport framework; turn off "Swipe between full-screen apps" in System Settings > Mouse > More Gestures.
+
 Turn the macOS gesture with the same finger count off (System Settings > Trackpad > More Gestures).
 The listen-only event tap on gesture events does not hold any input back; Accessibility (already required) is the expected permission, Input Monitoring should not be needed.
 

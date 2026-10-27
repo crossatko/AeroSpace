@@ -54,7 +54,7 @@ private func swipeCallback(_: CGEventTapProxy, type: CGEventType, event: CGEvent
     return Unmanaged.passUnretained(event)
 }
 
-@MainActor private func performSwipe(_ action: SwipeAction) {
+@MainActor func performSwipe(_ action: SwipeAction) {
     let g = swipeSettings.withLock { $0 }
     Task { @MainActor in
         guard let token: RunSessionGuard = .isServerEnabled else { return }

@@ -128,6 +128,9 @@ workspace-swipe-threshold = 15     # percent of the trackpad width the fingers t
 workspace-swipe-natural = true     # fingers right = previous workspace (like macOS Spaces)
 workspace-swipe-skip-empty = true  # skip empty workspaces
 workspace-swipe-wrap = false       # wrap around at the first/last workspace
+magic-mouse-swipe = false          # Magic Mouse swipe (private API); natural/skip-empty/wrap are shared
+magic-mouse-swipe-fingers = 2      # 1 | 2 | 3
+magic-mouse-swipe-threshold = 25   # percent of the mouse surface width
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
